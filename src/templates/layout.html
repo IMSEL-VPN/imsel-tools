@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="{{LANG}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>$TITLE$</title>
+<meta name="description" content="$DESC$">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234ade80' stroke-width='2'%3E%3Cpath d='M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5z'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="$ROOT$/assets/css/main.css">
+</head>
+<body data-lang="{{LANG}}" data-copied="{{t:common.copied}}" data-chars-label="{{t:common.chars}}">
+<header class="site-header">
+  <div class="wrap header-row">
+    <a class="brand" href="$HOME_HREF$">
+      <svg class="brand-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5z"/></svg>
+      <span class="brand-name">{{t:brand}}</span>
+    </a>
+    <nav class="tool-nav" aria-label="{{t:home.heading}}">$NAV$</nav>
+    <a class="lang-switch" href="$OTHER_HREF$" hreflang="{{OTHER_LANG}}">{{t:common.langSwitch}}</a>
+  </div>
+</header>
+<main class="wrap">
+$CONTENT$
+</main>
+<footer class="site-footer">
+  <div class="wrap footer-row">
+    <span>© IMSEL</span>
+    <span>{{t:common.footerLocal}}</span>
+    <a href="https://gitlab-docs.imsel.dev/" target="_blank" rel="noopener">{{t:common.docs}}</a>
+  </div>
+</footer>
+</body>
+</html>

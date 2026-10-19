@@ -1,0 +1,41 @@
+<section class="term">
+  <p class="term-cli">{{t:b64e.cli}}</p>
+  <h1 class="term-heading"># &gt; {{t:b64e.heading}}</h1>
+  <p class="term-lead">{{t:b64e.lead}}</p>
+</section>
+
+<section class="panel">
+  <div class="panel-body">
+    <div class="field">
+      <div class="field-head">
+        <label for="b64-input">{{t:b64e.inputLabel}}</label>
+        <span class="counter" data-counter="b64-input"></span>
+      </div>
+      <textarea id="b64-input" class="mono" rows="6" placeholder="{{t:b64e.inputPlaceholder}}"></textarea>
+    </div>
+    <div class="row row-checks">
+      <label class="check"><input type="checkbox" id="opt-urlsafe"> {{t:b64e.urlSafeLabel}}</label>
+      <label class="check"><input type="checkbox" id="opt-nopadding"> {{t:b64e.noPaddingLabel}}</label>
+    </div>
+    <div class="field">
+      <div class="field-head">
+        <label for="b64-output">{{t:b64e.outputLabel}}</label>
+        <span class="counter" data-counter="b64-output"></span>
+      </div>
+      <textarea id="b64-output" class="mono" rows="6" readonly placeholder="{{t:b64e.outputPlaceholder}}"></textarea>
+      <div class="row">
+        <button type="button" class="btn" data-copy="b64-output">{{t:common.copy}}</button>
+      </div>
+    </div>
+    <div class="field">
+      <div class="field-head"><span class="field-label">{{t:b64e.examplesLabel}}</span></div>
+      <div class="row">
+        <button type="button" class="btn btn-ghost b64-example" data-value="Hello World!">Hello World!</button>
+        <button type="button" class="btn btn-ghost b64-example" data-value='{"Name":"Test"}'>JSON</button>
+        <button type="button" class="btn btn-ghost b64-example" data-value="imsel://routing/add/eyJHbG9iYWxQcm94eSI6InRydWUifQ==">imsel://</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script type="module" src="$ROOT$/assets/js/b64tool.js" data-tool="encode"></script>

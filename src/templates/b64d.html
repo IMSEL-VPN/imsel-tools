@@ -1,0 +1,32 @@
+<section class="term">
+  <p class="term-cli">{{t:b64d.cli}}</p>
+  <h1 class="term-heading"># &gt; {{t:b64d.heading}}</h1>
+  <p class="term-lead">{{t:b64d.lead}}</p>
+</section>
+
+<section class="panel">
+  <div class="panel-body">
+    <div class="field">
+      <div class="field-head">
+        <label for="b64-input">{{t:b64d.inputLabel}}</label>
+        <span class="counter" data-counter="b64-input"></span>
+      </div>
+      <textarea id="b64-input" class="mono" rows="6" placeholder="{{t:b64d.inputPlaceholder}}"></textarea>
+      <p class="hint">{{t:b64d.tolerantNote}}</p>
+    </div>
+    <div class="field">
+      <div class="field-head">
+        <label for="b64-output">{{t:b64d.outputLabel}}</label>
+        <span class="counter" data-counter="b64-output"></span>
+      </div>
+      <textarea id="b64-output" class="mono" rows="6" readonly placeholder="{{t:b64d.outputPlaceholder}}"></textarea>
+      <span id="b64-status" class="status status-error" hidden>{{t:b64d.errInvalid}}</span>
+      <div class="row">
+        <button type="button" class="btn" data-copy="b64-output">{{t:common.copy}}</button>
+        <a id="b64-open-builder" class="btn btn-ghost" href="../routing/" hidden>{{t:b64d.openInBuilder}}</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script type="module" src="$ROOT$/assets/js/b64tool.js" data-tool="decode"></script>

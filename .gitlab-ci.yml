@@ -1,0 +1,29 @@
+# CI IMSEL Tools: тесты ядра на Node, проверки на Python, деплой Pages.
+# Сайт полностью статический — сборка без внешних зависимостей.
+
+stages:
+  - test
+  - deploy
+
+core-tests:
+  stage: test
+  image: node:22-alpine
+  script:
+    - node tool/test.mjs
+
+validate:
+  stage: test
+  image: python:3.12-alpine
+  script:
+    - python tool/validate.py
+
+pages:
+  stage: deploy
+  image: python:3.12-alpine
+  script:
+    - python tool/build.py
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'

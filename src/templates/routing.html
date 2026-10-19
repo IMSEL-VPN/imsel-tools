@@ -1,0 +1,280 @@
+<section class="term">
+  <p class="term-cli">{{t:routing.cli}}</p>
+  <h1 class="term-heading"># &gt; {{t:routing.heading}}</h1>
+  <p class="term-lead">{{t:routing.lead}}</p>
+</section>
+
+<section class="panel">
+  <h2 class="panel-title">{{t:routing.importTitle}}</h2>
+  <div class="panel-body">
+    <textarea id="import-input" class="mono" rows="3" placeholder="{{t:routing.importHint}}"></textarea>
+    <div class="row">
+      <button type="button" id="import-btn" class="btn btn-primary"
+        data-status-ok="{{t:routing.importOk}}"
+        data-err-invalid-link="{{t:routing.errInvalidLink}}"
+        data-err-unsupported-scheme="{{t:routing.errUnsupportedScheme}}"
+        data-err-missing-payload="{{t:routing.errMissingPayload}}"
+        data-err-unsupported-command="{{t:routing.errUnsupportedCommand}}"
+        data-err-invalid-base64="{{t:routing.errInvalidBase64}}"
+        data-err-invalid-json="{{t:routing.errInvalidJson}}"
+        data-err-bad-input="{{t:routing.errBadInput}}">{{t:routing.importBtn}}</button>
+      <span id="import-status" class="status" hidden></span>
+    </div>
+  </div>
+</section>
+
+<section class="panel">
+  <h2 class="panel-title">{{t:routing.linkTitle}}</h2>
+  <div class="panel-body">
+    <div class="field field-toggle">
+      <div class="field-head">
+        <label for="onadd-toggle">{{t:routing.onaddLabel}}</label>
+        <span class="field-desc">{{t:routing.onaddHint}}</span>
+      </div>
+      <label class="switch"><input type="checkbox" id="onadd-toggle"><span class="switch-track"></span></label>
+    </div>
+    <textarea id="link-output" class="mono" rows="3" readonly></textarea>
+    <div class="row">
+      <button type="button" class="btn" data-copy="link-output">{{t:common.copy}}</button>
+    </div>
+    <h3 class="sub-title">{{t:routing.qrTitle}}</h3>
+    <div id="qr-box" class="qr-box" hidden></div>
+    <p id="qr-note" class="hint" hidden>{{t:routing.qrTooLong}}</p>
+  </div>
+</section>
+
+<section class="panel">
+  <h2 class="panel-title">{{t:routing.editorTitle}}</h2>
+  <div class="panel-body">
+    <div class="tabs" role="tablist">
+      <button type="button" class="tab-btn is-active" data-tab="main" role="tab">{{t:routing.tabMain}}</button>
+      <button type="button" class="tab-btn" data-tab="dns" role="tab">{{t:routing.tabDns}}</button>
+      <button type="button" class="tab-btn" data-tab="geo" role="tab">{{t:routing.tabGeo}}</button>
+      <button type="button" class="tab-btn" data-tab="rules" role="tab">{{t:routing.tabRules}}</button>
+    </div>
+
+    <div class="tab-panel is-active" id="tab-main">
+      <div class="field">
+        <div class="field-head">
+          <label for="f-name">{{t:routing.nameLabel}}</label>
+          <span class="field-desc">{{t:routing.nameDesc}}</span>
+        </div>
+        <input type="text" id="f-name">
+      </div>
+      <div class="field field-toggle">
+        <div class="field-head">
+          <label for="f-globalproxy">{{t:routing.globalProxyLabel}}</label>
+          <span class="field-desc">{{t:routing.globalProxyDesc}}</span>
+        </div>
+        <label class="switch"><input type="checkbox" id="f-globalproxy"><span class="switch-track"></span></label>
+      </div>
+      <div class="field">
+        <div class="field-head">
+          <label for="f-routeorder">{{t:routing.routeOrderLabel}}</label>
+          <span class="field-desc">{{t:routing.routeOrderDesc}}</span>
+        </div>
+        <select id="f-routeorder"></select>
+      </div>
+      <div class="field">
+        <div class="field-head">
+          <label for="f-domainstrategy">{{t:routing.domainStrategyLabel}}</label>
+          <span class="field-desc">{{t:routing.domainStrategyDesc}}</span>
+        </div>
+        <select id="f-domainstrategy"></select>
+      </div>
+      <div class="field">
+        <div class="field-head">
+          <label for="f-directdomainstrategy">{{t:routing.directDomainStrategyLabel}}</label>
+          <span class="field-desc">{{t:routing.directDomainStrategyDesc}}</span>
+        </div>
+        <select id="f-directdomainstrategy"></select>
+      </div>
+      <div class="field field-toggle">
+        <div class="field-head">
+          <label for="f-fakedns">{{t:routing.fakeDnsLabel}}</label>
+          <span class="field-desc">{{t:routing.fakeDnsDesc}}</span>
+        </div>
+        <label class="switch"><input type="checkbox" id="f-fakedns"><span class="switch-track"></span></label>
+      </div>
+      <div class="field field-toggle">
+        <div class="field-head">
+          <label for="f-usechunkfiles">{{t:routing.useChunkFilesLabel}}</label>
+          <span class="field-desc">{{t:routing.useChunkFilesDesc}}</span>
+        </div>
+        <label class="switch"><input type="checkbox" id="f-usechunkfiles"><span class="switch-track"></span></label>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="tab-dns">
+      <h3 class="sub-title">{{t:routing.remoteDnsTitle}}</h3>
+      <div class="field">
+        <div class="field-head">
+          <label for="f-remotetype">{{t:routing.dnsTypeLabel}}</label>
+          <span class="field-desc">{{t:routing.dnsTypeDesc}}</span>
+        </div>
+        <select id="f-remotetype">
+          <option value="DoH">DoH (DNS-over-HTTPS)</option>
+          <option value="DoU">DoU (DNS-over-UDP)</option>
+        </select>
+      </div>
+      <div class="field">
+        <div class="field-head">
+          <label for="f-remotedomain">{{t:routing.dnsDomainLabel}}</label>
+          <span class="field-desc">{{t:routing.dnsDomainDesc}}</span>
+        </div>
+        <input type="text" id="f-remotedomain" placeholder="https://cloudflare-dns.com/dns-query">
+      </div>
+      <div class="field">
+        <div class="field-head">
+          <label for="f-remoteip">{{t:routing.dnsIpLabel}}</label>
+          <span class="field-desc">{{t:routing.dnsIpDesc}}</span>
+        </div>
+        <input type="text" id="f-remoteip" placeholder="1.1.1.1">
+      </div>
+      <h3 class="sub-title">{{t:routing.domesticDnsTitle}}</h3>
+      <div class="field">
+        <div class="field-head">
+          <label for="f-domestictype">{{t:routing.dnsTypeLabel}}</label>
+          <span class="field-desc">{{t:routing.dnsTypeDesc}}</span>
+        </div>
+        <select id="f-domestictype">
+          <option value="DoH">DoH (DNS-over-HTTPS)</option>
+          <option value="DoU">DoU (DNS-over-UDP)</option>
+        </select>
+      </div>
+      <div class="field">
+        <div class="field-head">
+          <label for="f-domesticdomain">{{t:routing.dnsDomainLabel}}</label>
+          <span class="field-desc">{{t:routing.dnsDomainDesc}}</span>
+        </div>
+        <input type="text" id="f-domesticdomain" placeholder="https://dns.google/dns-query">
+      </div>
+      <div class="field">
+        <div class="field-head">
+          <label for="f-domesticip">{{t:routing.dnsIpLabel}}</label>
+          <span class="field-desc">{{t:routing.dnsIpDesc}}</span>
+        </div>
+        <input type="text" id="f-domesticip" placeholder="8.8.8.8">
+      </div>
+      <div class="field">
+        <div class="field-head">
+          <label for="f-dnshosts">{{t:routing.dnsHostsLabel}}</label>
+          <span class="field-desc">{{t:routing.dnsHostsDesc}}</span>
+        </div>
+        <textarea id="f-dnshosts" class="mono" rows="4">{ }
+</textarea>
+        <span id="dnshosts-status" class="status status-error" hidden>{{t:routing.dnsHostsInvalid}}</span>
+      </div>
+    </div>
+
+    <div class="tab-panel" id="tab-geo">
+      <div class="field">
+        <div class="field-head">
+          <label for="f-geoipurl">{{t:routing.geoipLabel}}</label>
+          <span class="field-desc">{{t:routing.geoipDesc}}</span>
+        </div>
+        <input type="url" id="f-geoipurl">
+      </div>
+      <div class="field">
+        <div class="field-head">
+          <label for="f-geositeurl">{{t:routing.geositeLabel}}</label>
+          <span class="field-desc">{{t:routing.geositeDesc}}</span>
+        </div>
+        <input type="url" id="f-geositeurl">
+      </div>
+      <div class="field">
+        <div class="field-head">
+          <label for="f-lastupdated">{{t:routing.lastUpdatedLabel}}</label>
+          <span class="field-desc">{{t:routing.lastUpdatedDesc}}</span>
+        </div>
+        <input type="text" id="f-lastupdated" inputmode="numeric" placeholder="1693826255">
+      </div>
+    </div>
+
+    <div class="tab-panel" id="tab-rules">
+      <p class="hint">{{t:routing.rulesLead}}</p>
+      <div class="list-editor" data-list="directSites">
+        <div class="field-head">
+          <span class="field-label">{{t:routing.directSitesLabel}}</span>
+          <span class="field-desc">{{t:routing.directSitesDesc}}</span>
+        </div>
+        <div class="chips"></div>
+        <div class="list-add-row">
+          <input type="text" placeholder="{{t:routing.itemPlaceholder}}">
+          <button type="button" class="btn">{{t:routing.addItemLabel}}</button>
+        </div>
+      </div>
+      <div class="list-editor" data-list="directIp">
+        <div class="field-head">
+          <span class="field-label">{{t:routing.directIpLabel}}</span>
+          <span class="field-desc">{{t:routing.directIpDesc}}</span>
+        </div>
+        <div class="chips"></div>
+        <div class="list-add-row">
+          <input type="text" placeholder="{{t:routing.itemPlaceholder}}">
+          <button type="button" class="btn">{{t:routing.addItemLabel}}</button>
+        </div>
+      </div>
+      <div class="list-editor" data-list="proxySites">
+        <div class="field-head">
+          <span class="field-label">{{t:routing.proxySitesLabel}}</span>
+          <span class="field-desc">{{t:routing.proxySitesDesc}}</span>
+        </div>
+        <div class="chips"></div>
+        <div class="list-add-row">
+          <input type="text" placeholder="{{t:routing.itemPlaceholder}}">
+          <button type="button" class="btn">{{t:routing.addItemLabel}}</button>
+        </div>
+      </div>
+      <div class="list-editor" data-list="proxyIp">
+        <div class="field-head">
+          <span class="field-label">{{t:routing.proxyIpLabel}}</span>
+          <span class="field-desc">{{t:routing.proxyIpDesc}}</span>
+        </div>
+        <div class="chips"></div>
+        <div class="list-add-row">
+          <input type="text" placeholder="{{t:routing.itemPlaceholder}}">
+          <button type="button" class="btn">{{t:routing.addItemLabel}}</button>
+        </div>
+      </div>
+      <div class="list-editor" data-list="blockSites">
+        <div class="field-head">
+          <span class="field-label">{{t:routing.blockSitesLabel}}</span>
+          <span class="field-desc">{{t:routing.blockSitesDesc}}</span>
+        </div>
+        <div class="chips"></div>
+        <div class="list-add-row">
+          <input type="text" placeholder="{{t:routing.itemPlaceholder}}">
+          <button type="button" class="btn">{{t:routing.addItemLabel}}</button>
+        </div>
+      </div>
+      <div class="list-editor" data-list="blockIp">
+        <div class="field-head">
+          <span class="field-label">{{t:routing.blockIpLabel}}</span>
+          <span class="field-desc">{{t:routing.blockIpDesc}}</span>
+        </div>
+        <div class="chips"></div>
+        <div class="list-add-row">
+          <input type="text" placeholder="{{t:routing.itemPlaceholder}}">
+          <button type="button" class="btn">{{t:routing.addItemLabel}}</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="panel">
+  <h2 class="panel-title">{{t:routing.jsonTitle}}</h2>
+  <div class="panel-body">
+    <p class="term-lead">{{t:routing.jsonLead}}</p>
+    <textarea id="json-editor" class="mono" rows="14" spellcheck="false"></textarea>
+    <div class="row">
+      <button type="button" id="json-reset" class="btn">{{t:common.reset}}</button>
+      <button type="button" id="json-apply" class="btn btn-primary">{{t:common.apply}}</button>
+      <span id="json-status" class="status status-error" hidden>{{t:routing.jsonInvalid}}</span>
+    </div>
+  </div>
+</section>
+
+<script src="$ROOT$/assets/js/vendor/qrcode.js"></script>
+<script type="module" src="$ROOT$/assets/js/routing.js"></script>
