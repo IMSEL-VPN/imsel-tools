@@ -1,6 +1,6 @@
 # IMSEL Tools
 
-Публичный сайт онлайн-инструментов IMSEL VPN: **tools.imsel.dev**.
+Публичный сайт онлайн-инструментов IMSEL VPN: **imsel-tools.imsel.dev**.
 
 Инструменты:
 - **Routing Builder** — визуальный конструктор профилей маршрутизации; собирает
@@ -35,21 +35,30 @@ python -m http.server 8765 --directory public
 
 ## Деплой
 
-- **GitLab Pages** (основной домен `tools.imsel.dev`): job `pages` в
+- **GitLab Pages** (основной домен `imsel-tools.imsel.dev`): job `pages` в
   `.gitlab-ci.yml` на ветке по умолчанию.
 - **GitHub Pages** (зеркало): workflow `.github/workflows/pages.yml`.
 
-Один hostname указывает только на один хостинг. Рекомендация (как у
-документации): `tools.imsel.dev` → GitLab Pages; зеркало доступно по
-техническому домену GitHub Pages и при необходимости переключается DNS-записью.
+Один hostname указывает только на один хостинг. `imsel-tools.imsel.dev`
+обслуживает GitLab Pages; зеркало доступно по техническому домену
+`imsel-vpn.github.io/imsel-tools/` и при необходимости переключается
+DNS-записью. До верификации домена сайт GitLab отвечает на временном
+адресе вида `imsel-tools-<hash>.gitlab.io`.
 
 ### Настройка домена
 
-1. GitLab: Settings → Pages → New Domain → `tools.imsel.dev`, затем DNS
-   `CNAME tools.imsel.dev → imsel-vpn.gitlab.io` (плюс TXT-подтверждение).
-2. GitHub (зеркало): Settings → Pages → Custom domain
-   (например, `gh-tools.imsel.dev`) → `CNAME → imsel-vpn.github.io`.
-3. HTTPS: включить enforcement в обоих UI после выпуска сертификатов.
+1. GitLab: Settings → Pages → New Domain → `imsel-tools.imsel.dev`.
+   В Cloudflare добавить TXT
+   `_gitlab-pages-verification-code.imsel-tools.imsel.dev =
+   gitlab-pages-verification-code=<код из UI>` → Retry verification.
+   Для поддомена включить DNS-only (без прокси), чтобы выпустился
+   сертификат Let's Encrypt; после выпуска можно вернуть прокси с режимом
+   SSL/TLS Full. Access control выключить (сайт публичный).
+2. GitHub (зеркало): Custom domain НЕ привязывать — иначе технический
+   адрес зеркала начинает редиректить на домен GitLab. При необходимости
+   отдельного домена зеркала использовать другой поддомен, например
+   `gh-tools.imsel.dev` → `CNAME imsel-vpn.github.io`.
+3. HTTPS: включить force HTTPS в GitLab после выпуска сертификата.
 
 ## Добавление инструмента
 
