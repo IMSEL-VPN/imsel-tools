@@ -1,6 +1,6 @@
 # IMSEL Tools
 
-Публичный сайт онлайн-инструментов IMSEL VPN: **imsel-tools.imsel.dev**.
+Публичный сайт онлайн-инструментов IMSEL VPN: [**imsel-tools.imsel.dev**](https://imsel-tools.imsel.dev/).
 
 Инструменты:
 - **Routing Builder** — визуальный конструктор профилей маршрутизации; собирает
