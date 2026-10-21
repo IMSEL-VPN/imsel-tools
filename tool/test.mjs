@@ -1,6 +1,5 @@
 // Тесты ядра (codec.js / profile.js) на Node: node tool/test.mjs
-// Golden-векторы взяты из тестов приложения, чтобы ссылки, собранные
-// сайтом, гарантированно парсились импортом приложения.
+// Public exchange vectors cover the supported fields, not every extension.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -150,6 +149,61 @@ test('fromJson: DirectDomainStrategy — только известные зна�
     assert.equal(profileFromJson({ DirectDomainStrategy: bad }).directDomainStrategy, null);
   }
   assert.equal(profileFromJson({ DirectDomainStrategy: 4 }).directDomainStrategy, null);
+});
+
+test('Geo optional fields: omission, aliases, clear, boundaries and repeated round-trip', () => {
+  const keys = ['GeoipSha256Url', 'GeositeSha256Url', 'GeoUpdateIntervalHours'];
+  for (const p of [defaultProfile(), profileFromJson({})]) {
+    for (const key of keys) assert.equal(Object.hasOwn(profileToJson(p), key), false);
+  }
+  for (const interval of [0, 1, 24, 8760]) {
+    const fields = {
+      GeoipSha256Url: 'https://geo.example.org/geoip.dat.sha256?version=2',
+      GeositeSha256Url: 'http://geo.example.org:8080/geosite.sha256',
+      GeoUpdateIntervalHours: interval,
+    };
+    for (const camel of [false, true]) {
+      const input = Object.fromEntries(Object.entries(fields).map(([key, value]) =>
+        [camel ? key[0].toLowerCase() + key.slice(1) : key, value]));
+      let p = profileFromJson(input);
+      for (const command of ['add', 'onadd']) p = parseRoutingLink(buildLink(p, command)).profile;
+      for (const key of keys) assert.equal(profileToJson(p)[key], fields[key]);
+    }
+  }
+  const clear = profileFromJson({ GeoipSha256Url: '', GeositeSha256Url: '  ',
+    geoipSha256Url: 'https://must-not-win.example.org/hash', GeoUpdateIntervalHours: 0,
+    geoUpdateIntervalHours: 24 });
+  assert.equal(profileToJson(clear).GeoipSha256Url, '');
+  assert.equal(profileToJson(clear).GeositeSha256Url, '');
+  assert.equal(profileToJson(clear).GeoUpdateIntervalHours, 0);
+});
+
+test('Geo optional fields: strict types, HTTP(S) URLs without credentials or fragment', () => {
+  const invalid = [
+    ...[true, false, null, '24', -1, 8761, 0.5, [], {}, NaN, Infinity]
+      .map((GeoUpdateIntervalHours) => ({ GeoUpdateIntervalHours })),
+    ...[null, true, 42, [], {}, 'ftp://geo.example.org/hash', 'relative/hash',
+      'https://', 'https://user@geo.example.org/hash', 'https://user:pass@geo.example.org/hash',
+      'https://geo.example.org:0/hash', 'https://geo.example.org:65536/hash',
+      'https://geo.example.org/has h', 'https://geo.example.org/has\nh',
+      'https://geo.example.org/hash#part', 'https://geo.example.org/hash#']
+      .flatMap((value) => [{ GeoipSha256Url: value }, { geositeSha256Url: value }]),
+    { GeoipSha256Url: false, geoipSha256Url: 'https://valid.example.org/hash' },
+    { GeoUpdateIntervalHours: true, geoUpdateIntervalHours: 24 },
+  ];
+  for (const input of invalid) {
+    assert.throws(() => profileFromJson(input), (e) => e === LINK_ERRORS.invalidProfile);
+  }
+  for (const input of [{ GeoipSha256Url: true }, { GeoUpdateIntervalHours: false }]) {
+    const link = `imsel://routing/add/${encodeText(JSON.stringify(input))}`;
+    assert.throws(() => parseRoutingLink(link), (e) => e === LINK_ERRORS.invalidProfile);
+  }
+  const p = profileFromJson({ Geoipurl: 'https://old.example.org/geoip.dat',
+    Geositeurl: 'http://old.example.org/geosite.dat',
+    GeoipSha256Url: '  https://geo.example.org/hash  ' });
+  assert.equal(profileToJson(p).Geoipurl, 'https://old.example.org/geoip.dat');
+  assert.equal(profileToJson(p).Geositeurl, 'http://old.example.org/geosite.dat');
+  assert.equal(profileToJson(p).GeoipSha256Url, 'https://geo.example.org/hash');
 });
 
 // ── toJson: точная структура ──────────────────────────────────────────
@@ -311,6 +365,265 @@ test('buildLink: round-trip дефолтного профиля', () => {
 test('buildLink: add-команда', () => {
   const link = buildLink(defaultProfile(), 'add');
   assert.ok(link.startsWith('imsel://routing/add/'));
+});
+
+const fullProfile = JSON.parse(readFileSync(
+  path.join(root, 'tool', 'fixtures', 'routing-profile-full.json'), 'utf8',
+));
+
+test('full public golden: exact canonical JSON and two link round-trips', () => {
+  let p = profileFromJson(fullProfile);
+  assert.deepEqual(profileToJson(p), fullProfile);
+  for (const command of ['add', 'onadd']) {
+    p = parseRoutingLink(buildLink(p, command)).profile;
+    assert.deepEqual(profileToJson(p), fullProfile);
+  }
+});
+
+test('full public fields: camel aliases, Pascal precedence, no shared references', () => {
+  const input = structuredClone(fullProfile);
+  for (const key of ['Rules', 'Outbounds', 'DnsServers', 'QueryStrategy', 'BlockAds']) {
+    input[key[0].toLowerCase() + key.slice(1)] = input[key];
+    delete input[key];
+  }
+  const p = profileFromJson(input);
+  assert.deepEqual(profileToJson(p), fullProfile);
+  input.rules[0].domain.push('changed');
+  input.dnsServers[0].domains.push('changed');
+  input.outbounds[0].settings.domainStrategy = 'changed';
+  assert.deepEqual(profileToJson(p), fullProfile);
+  const exported = profileToJson(p);
+  exported.Outbounds[0].settings.domainStrategy = 'changed';
+  assert.deepEqual(profileToJson(p), fullProfile);
+  assert.equal(profileFromJson({ BlockAds: false, blockAds: true }).blockAds, false);
+  assert.deepEqual(profileFromJson({ DnsServers: [], dnsServers: fullProfile.DnsServers }).dnsServers, []);
+});
+
+test('new fields: omission, empty arrays, DNS defaults and boolean false are distinct', () => {
+  const legacy = profileToJson(profileFromJson({}));
+  for (const key of ['Rules', 'Outbounds', 'DnsServers', 'QueryStrategy', 'BlockAds']) {
+    assert.equal(Object.hasOwn(legacy, key), false);
+  }
+  const empty = { Rules: [], Outbounds: [], DnsServers: [], BlockAds: false };
+  const out = profileToJson(profileFromJson(empty));
+  for (const key of Object.keys(empty)) assert.deepEqual(out[key], empty[key]);
+  assert.deepEqual(profileFromJson({ DnsServers: [{ address: 'localhost', id: 'local-only' }] }).dnsServers,
+    [{ address: 'localhost', port: '', domains: [], enabled: true }]);
+});
+
+test('QueryStrategy: canonical values, aliases, none without conversion', () => {
+  for (const value of ['UseIP', 'UseIPv4', 'UseIPv6', 'none']) {
+    assert.equal(profileToJson(profileFromJson({ queryStrategy: value.toLowerCase() })).QueryStrategy, value);
+  }
+  assert.equal(profileToJson(profileFromJson({ DomainStrategy: 'none' })).DomainStrategy, 'none');
+});
+
+test('new field types: reject instead of silently dropping values', () => {
+  const invalid = [
+    { Rules: {} }, { Rules: [null] }, { Rules: [{}] }, { Outbounds: 'bad' }, { Outbounds: [[]] },
+    { Outbounds: [null] }, { Outbounds: [{}] }, { Outbounds: [{ tag: 'x', protocol: 1 }] },
+    { Outbounds: [{ tag: 'x', protocol: 'freedom', settings: [] }] },
+    { Outbounds: [{ tag: 'x', protocol: 'freedom', settings: null }] },
+    { Rules: [{ action: 'blok' }] }, { Rules: [{ enabled: 'false' }] },
+    { Rules: [{ domain: ['ok', 1] }] }, { Rules: [{ port: 443 }] },
+    ...['false', 0, null, [], {}].map((BlockAds) => ({ BlockAds })),
+    ...['bad', '', 0, null, [], {}].map((QueryStrategy) => ({ QueryStrategy })),
+    ...[null, {}, 'bad', [null], [[]], [{}], [{ address: 1 }], [{ address: '' }], [{ address: '   ' }],
+      [{ address: 'x', port: 53 }], [{ address: 'x', port: null }],
+      [{ address: 'x', domains: 'domain:x' }], [{ address: 'x', domains: [1] }],
+      [{ address: 'x', enabled: 'false' }], [{ address: 'x', enabled: null }],
+    ].map((DnsServers) => ({ DnsServers })),
+  ];
+  for (const input of invalid) {
+    assert.throws(() => profileFromJson(input), (e) => e === LINK_ERRORS.invalidProfile);
+    assert.throws(() => parseRoutingLink(`imsel://routing/add/${encodeText(JSON.stringify(input))}`),
+      (e) => e === LINK_ERRORS.invalidProfile);
+    assert.equal(tryParseRoutingLink(`imsel://routing/add/${encodeText(JSON.stringify(input))}`), null);
+  }
+});
+
+test('full data: six outbounds, >100KB, nested unknown fields and order preserved', () => {
+  const input = structuredClone(fullProfile);
+  input.Outbounds = Array.from({ length: 6 }, (_, i) => ({
+    tag: `extra-${i}`, protocol: 'freedom', settings: { future: { list: [false, null, i, { data: 'x'.repeat(18000) }] } },
+  }));
+  input.Rules[0].future = { ordered: [3, 1, null, { unknown: true }] };
+  assert.ok(JSON.stringify(input).length > 100000);
+  let p = profileFromJson(input);
+  for (let i = 0; i < 2; i++) p = parseRoutingLink(buildLink(p, 'add')).profile;
+  assert.deepEqual(profileToJson(p), input);
+});
+
+// Exercise the real browser event handlers without adding a DOM dependency.
+function routingHarness() {
+  class Element {
+    value = '';
+    checked = false;
+    disabled = false;
+    hidden = false;
+    dataset = {};
+    children = [];
+    events = {};
+    classList = { toggle() {} };
+    set innerHTML(_) { this.children = []; }
+    appendChild(child) { this.children.push(child); }
+    append(...children) { this.children.push(...children); }
+    setAttribute() {}
+    addEventListener(name, fn) { (this.events[name] ??= []).push(fn); }
+    emit(name, event = {}) {
+      for (const fn of this.events[name] ?? []) fn(event);
+    }
+    click() { if (!this.disabled) this.emit('click'); }
+  }
+  const ids = new Map();
+  const get = (id) => {
+    if (!ids.has(id)) ids.set(id, new Element());
+    return ids.get(id);
+  };
+  const lists = ['directSites', 'directIp', 'proxySites', 'proxyIp', 'blockSites', 'blockIp']
+    .map((key) => {
+      const editor = new Element();
+      editor.dataset.list = key;
+      editor.input = new Element();
+      editor.button = new Element();
+      editor.chips = new Element();
+      editor.querySelector = (selector) => selector.endsWith('input') ? editor.input : editor.button;
+      return editor;
+    });
+  const document = {
+    getElementById: get,
+    createElement: () => new Element(),
+    querySelector: (selector) => lists.find((el) => selector.includes(`"${el.dataset.list}"`)).chips,
+    querySelectorAll: (selector) => {
+      if (selector === '.list-editor') return lists;
+      if (selector.startsWith('.list-add-row')) return lists.flatMap((el) => [el.input, el.button]);
+      return [];
+    },
+  };
+  const window = { qrcode: () => ({ addData() {}, make() {}, createSvgTag: () => '<svg></svg>' }) };
+  const bindings = {
+    ...profileMod, decodeToText,
+    initCopyButtons() {}, initCounters() {},
+    initGeoPicker() {},
+    initConfigPreview() { return () => {}; },
+    showStatus(el, text, error) { el.hidden = false; el.textContent = text; el.error = error; },
+  };
+  const script = src('routing.js').replace(/^import[\s\S]*?from '[^']+';\r?\n/gm, '');
+  new Function('document', 'window', 'location', 'history', ...Object.keys(bindings), script)(
+    document, window, { hash: '' }, {}, ...Object.values(bindings),
+  );
+  return {
+    get, lists,
+    import(input) {
+      get('import-input').value = typeof input === 'string' ? input : JSON.stringify(input);
+      get('import-btn').click();
+      assert.equal(get('import-status').error, false);
+    },
+    output() { return profileToJson(parseRoutingLink(get('link-output').value).profile); },
+  };
+}
+
+test('form: full Rules lock simplified controls; all allowed edits retain advanced data', () => {
+  const ui = routingHarness();
+  ui.import(fullProfile);
+  assert.equal(ui.get('advanced-notice').hidden, false);
+  const locked = ['f-globalproxy', 'f-routeorder', 'f-domainstrategy',
+    'f-directdomainstrategy', 'f-fakedns', 'f-dnshosts', 'f-remotetype',
+    'f-remotedomain', 'f-remoteip', 'f-domestictype', 'f-domesticdomain', 'f-domesticip'];
+  for (const id of locked) assert.equal(ui.get(id).disabled, true, id);
+  for (const list of ui.lists) {
+    assert.equal(list.input.disabled, true);
+    assert.equal(list.button.disabled, true);
+    list.input.value = 'must-not-add';
+    list.input.emit('keydown', { key: 'Enter', preventDefault() {} });
+  }
+  for (const id of ['f-name', 'f-geoipurl', 'f-geositeurl', 'f-lastupdated', 'f-usechunkfiles']) {
+    assert.equal(ui.get(id).disabled, false);
+    ui.get(id).value = id === 'f-lastupdated' ? '123' : 'edited';
+    ui.get(id).emit('input');
+    for (const key of ['Rules', 'Outbounds', 'DnsServers', 'QueryStrategy', 'BlockAds',
+      'RemoteDNSType', 'DomesticDNSType', 'DomainStrategy', 'DirectSites']) {
+      assert.deepEqual(ui.output()[key], fullProfile[key], `${id}: ${key}`);
+    }
+  }
+  ui.get('f-dnshosts').value = '{"must-not-change":"x"}';
+  ui.get('f-dnshosts').emit('input');
+  assert.deepEqual(ui.output().DnsHosts, fullProfile.DnsHosts);
+});
+
+test('form: full DNS alone and empty full fields stay authoritative; JSON edits apply', () => {
+  const ui = routingHarness();
+  for (const DnsServers of [fullProfile.DnsServers, []]) {
+    ui.import({ ...profileToJson(defaultProfile()), DnsServers });
+    assert.equal(ui.get('f-remotetype').disabled, true);
+    assert.equal(ui.get('f-globalproxy').disabled, false);
+    ui.get('f-name').value = 'Renamed';
+    ui.get('f-name').emit('input');
+    assert.deepEqual(ui.output().DnsServers, DnsServers);
+  }
+  ui.import({ Rules: [], Outbounds: [] });
+  assert.equal(ui.get('f-routeorder').disabled, true);
+  assert.deepEqual(ui.output().Rules, []);
+  assert.deepEqual(ui.output().Outbounds, []);
+  ui.get('json-editor').value = JSON.stringify(fullProfile);
+  ui.get('json-editor').emit('input');
+  ui.get('json-apply').click();
+  assert.deepEqual(ui.output(), fullProfile);
+  const previous = ui.get('link-output').value;
+  ui.get('json-editor').value = JSON.stringify({ DnsServers: [{ address: 'x', enabled: 'false' }] });
+  ui.get('json-apply').click();
+  assert.equal(ui.get('json-status').hidden, false);
+  assert.equal(ui.get('link-output').value, previous);
+  ui.import({ Outbounds: [] });
+  assert.equal(ui.get('f-directdomainstrategy').disabled, true);
+  assert.equal(ui.get('f-remotetype').disabled, false);
+  ui.import({});
+  assert.equal(ui.get('advanced-notice').hidden, true);
+  assert.equal(ui.get('f-directdomainstrategy').disabled, false);
+  assert.equal(ui.lists[0].input.disabled, false);
+});
+
+test('form: raw JSON, base64 and link imports preserve identical public profile', () => {
+  const ui = routingHarness();
+  for (const input of [fullProfile, encodeText(JSON.stringify(fullProfile)),
+    `imsel://routing/onadd/${encodeText(JSON.stringify(fullProfile))}`]) {
+    ui.import(input);
+    assert.deepEqual(ui.output(), fullProfile);
+  }
+});
+
+test('form: JSON-only Geo fields survive edits without locking simplified controls', () => {
+  const ui = routingHarness();
+  const fields = { GeoipSha256Url: 'https://geo.example.org/ip.sha256',
+    GeositeSha256Url: '', GeoUpdateIntervalHours: 0 };
+  const input = { ...profileToJson(defaultProfile()), ...fields };
+  for (const source of [input, encodeText(JSON.stringify(input)),
+    `imsel://routing/onadd/${encodeText(JSON.stringify(input))}`]) {
+    ui.import(source);
+    assert.equal(ui.get('advanced-notice').hidden, false);
+    assert.equal(ui.get('f-globalproxy').disabled, false);
+    assert.equal(ui.get('f-remotetype').disabled, false);
+    for (const id of ['f-name', 'f-geoipurl', 'f-geositeurl', 'f-usechunkfiles']) {
+      ui.get(id).value = id === 'f-name' ? 'Renamed' : 'https://changed.example.org/data';
+      if (id === 'f-usechunkfiles') ui.get(id).checked = !ui.get(id).checked;
+      ui.get(id).emit('input');
+      for (const key of Object.keys(fields)) assert.equal(ui.output()[key], fields[key]);
+    }
+  }
+  ui.import({ ...fullProfile, ...fields });
+  ui.get('f-name').value = 'Full profile renamed';
+  ui.get('f-name').emit('input');
+  assert.deepEqual(ui.output(), { ...fullProfile, ...fields, Name: 'Full profile renamed' });
+  ui.get('json-editor').value = JSON.stringify({ ...input, GeoUpdateIntervalHours: 8760 });
+  ui.get('json-apply').click();
+  assert.equal(ui.output().GeoUpdateIntervalHours, 8760);
+  const previous = ui.get('link-output').value;
+  ui.get('json-editor').value = JSON.stringify({ ...input, GeoUpdateIntervalHours: true });
+  ui.get('json-apply').click();
+  assert.equal(ui.get('link-output').value, previous);
+  ui.import({});
+  assert.equal(ui.get('advanced-notice').hidden, true);
+  for (const key of Object.keys(fields)) assert.equal(Object.hasOwn(ui.output(), key), false);
 });
 
 // ── QR-библиотека (вендоренная) ───────────────────────────────────────

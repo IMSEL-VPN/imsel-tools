@@ -27,6 +27,16 @@ jobs:
           python-version: "3.12"
       - name: Core tests
         run: node tool/test.mjs
+      - name: Geo picker tests
+        run: node tool/test_geo_picker.mjs
+      - name: Theme tests
+        run: node tool/test_theme.mjs
+      - name: Configuration preview tests
+        run: node tool/test_config_preview.mjs
+      - name: Configuration preview UI tests
+        run: node tool/test_config_preview_ui.mjs
+      - name: Geo catalog parser tests
+        run: python -m unittest discover -s tool -p test_geo_catalog.py
       - name: Validate
         run: python tool/validate.py
       - name: Build

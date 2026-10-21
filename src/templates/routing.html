@@ -17,6 +17,7 @@
         data-err-unsupported-command="{{t:routing.errUnsupportedCommand}}"
         data-err-invalid-base64="{{t:routing.errInvalidBase64}}"
         data-err-invalid-json="{{t:routing.errInvalidJson}}"
+        data-err-invalid-profile="{{t:routing.errInvalidProfile}}"
         data-err-bad-input="{{t:routing.errBadInput}}">{{t:routing.importBtn}}</button>
       <span id="import-status" class="status" hidden></span>
     </div>
@@ -52,6 +53,7 @@
       <button type="button" class="tab-btn" data-tab="geo" role="tab">{{t:routing.tabGeo}}</button>
       <button type="button" class="tab-btn" data-tab="rules" role="tab">{{t:routing.tabRules}}</button>
     </div>
+    <p id="advanced-notice" class="hint" role="status" hidden>{{t:routing.advancedNotice}}</p>
 
     <div class="tab-panel is-active" id="tab-main">
       <div class="field">
@@ -191,7 +193,9 @@
       </div>
     </div>
 
-    <div class="tab-panel" id="tab-rules">
+    <div class="tab-panel" id="tab-rules"
+      data-geo-sites="{{t:routing.chooseGeosite}}"
+      data-geo-ip="{{t:routing.chooseGeoip}}">
       <p class="hint">{{t:routing.rulesLead}}</p>
       <div class="list-editor" data-list="directSites">
         <div class="field-head">
@@ -275,6 +279,67 @@
     </div>
   </div>
 </section>
+
+<section class="panel">
+  <h2 class="panel-title">{{t:routing.previewTitle}}</h2>
+  <div class="panel-body">
+    <p class="term-lead">{{t:routing.previewLead}}</p>
+    <p class="hint">{{t:routing.previewDisclaimer}}</p>
+    <div class="field">
+      <label for="preview-mode">{{t:routing.previewMode}}</label>
+      <select id="preview-mode">
+        <option value="template">{{t:routing.previewTemplate}}</option>
+        <option value="custom">{{t:routing.previewCustom}}</option>
+      </select>
+    </div>
+    <p id="preview-template-note" class="status status-error">{{t:routing.previewTemplateNote}}</p>
+    <div id="preview-custom" hidden>
+      <p class="hint">{{t:routing.previewReplace}}</p>
+      <div class="field">
+        <label for="preview-input">{{t:routing.previewInput}}</label>
+        <textarea id="preview-input" class="mono" rows="8" spellcheck="false" autocomplete="off" placeholder="{ &quot;outbounds&quot;: [...] }"></textarea>
+      </div>
+      <div class="field">
+        <label for="preview-proxy">{{t:routing.previewProxy}}</label>
+        <select id="preview-proxy" data-placeholder="{{t:routing.previewProxyPlaceholder}}"></select>
+      </div>
+    </div>
+    <p id="preview-status" class="status status-error" role="status" hidden
+      data-pending="{{t:routing.previewPending}}"
+      data-invalid-base="{{t:routing.previewInvalidBase}}"
+      data-select-proxy="{{t:routing.previewSelectProxy}}"
+      data-unsupported-topology="{{t:routing.previewUnsupported}}"
+      data-invalid-target="{{t:routing.previewInvalidTarget}}"
+      data-invalid-dns="{{t:routing.previewInvalidDns}}"
+      data-invalid-profile="{{t:routing.previewInvalidProfile}}"></p>
+    <label for="preview-output">{{t:routing.previewOutput}}</label>
+    <textarea id="preview-output" class="mono" rows="20" readonly spellcheck="false"></textarea>
+    <div class="row">
+      <button type="button" id="preview-copy" class="btn" data-copy="preview-output" disabled>{{t:common.copy}}</button>
+    </div>
+  </div>
+</section>
+
+<dialog id="geo-picker" class="geo-picker" aria-labelledby="geo-title">
+  <div class="geo-heading">
+    <h2 id="geo-title" class="panel-title"></h2>
+    <button type="button" id="geo-close" class="btn">{{t:routing.geoClose}}</button>
+  </div>
+  <p id="geo-source" class="hint" data-label="{{t:routing.geoSource}}"></p>
+  <p id="geo-mismatch" class="status status-error" hidden>{{t:routing.geoMismatch}}</p>
+  <label for="geo-search" class="field-label">{{t:routing.geoSearch}}</label>
+  <input type="text" id="geo-search" autocomplete="off" placeholder="{{t:routing.geoSearchHint}}">
+  <p id="geo-count" class="hint" role="status" aria-live="polite"
+    data-results="{{t:routing.geoResults}}" data-selected="{{t:routing.geoSelected}}"></p>
+  <div id="geo-results" class="geo-results" data-local="{{t:routing.geoLocal}}"
+    data-local-domains="{{t:routing.geoLocalDomains}}"></div>
+  <p id="geo-empty" class="hint" hidden>{{t:routing.geoEmpty}}</p>
+  <button type="button" id="geo-more" class="btn" hidden>{{t:routing.geoMore}}</button>
+  <div class="row geo-actions">
+    <button type="button" id="geo-add" class="btn btn-primary">{{t:routing.geoAdd}}</button>
+    <span class="hint">{{t:routing.geoAddHint}}</span>
+  </div>
+</dialog>
 
 <script src="$ROOT$/assets/js/vendor/qrcode.js"></script>
 <script type="module" src="$ROOT$/assets/js/routing.js"></script>

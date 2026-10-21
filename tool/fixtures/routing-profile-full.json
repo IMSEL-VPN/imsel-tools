@@ -1,0 +1,39 @@
+{
+  "Name": "Public full profile",
+  "GlobalProxy": "true",
+  "RemoteDNSType": "",
+  "RemoteDNSDomain": "",
+  "RemoteDNSIP": "",
+  "DomesticDNSType": "",
+  "DomesticDNSDomain": "",
+  "DomesticDNSIP": "",
+  "DnsHosts": {"resolver.example.org": "192.0.2.53"},
+  "FakeDNS": "false",
+  "DirectSites": [],
+  "DirectIp": [],
+  "ProxySites": [],
+  "ProxyIp": [],
+  "BlockSites": [],
+  "BlockIp": [],
+  "Geoipurl": "",
+  "Geositeurl": "",
+  "DomainStrategy": "none",
+  "DirectDomainStrategy": "UseIPv4",
+  "RouteOrder": "block,direct,proxy",
+  "UseChunkFiles": "true",
+  "LastUpdated": "",
+  "Rules": [
+    {"id": "public-rule", "name": "Example", "action": "custom", "domain": ["full:example.org"], "ip": [], "port": "443", "enabled": false, "process": [], "network": "tcp", "protocol": ["tls"], "locked": false, "customTag": "extra"}
+  ],
+  "Outbounds": [
+    {"tag": "direct", "protocol": "freedom", "settings": {"domainStrategy": "UseIPv4"}},
+    {"tag": "block", "protocol": "blackhole", "settings": {}},
+    {"tag": "extra", "protocol": "socks", "settings": {"servers": [{"address": "proxy.example.org", "port": 1080}]}}
+  ],
+  "DnsServers": [
+    {"address": "https://resolver.example.org/dns-query", "port": "", "domains": ["full:example.org"], "enabled": true},
+    {"address": "192.0.2.54", "port": "5353", "domains": [], "enabled": false}
+  ],
+  "QueryStrategy": "UseIPv6",
+  "BlockAds": false
+}

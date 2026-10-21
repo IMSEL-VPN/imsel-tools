@@ -10,12 +10,17 @@ core-tests:
   image: node:22-alpine
   script:
     - node tool/test.mjs
+    - node tool/test_geo_picker.mjs
+    - node tool/test_theme.mjs
+    - node tool/test_config_preview.mjs
+    - node tool/test_config_preview_ui.mjs
 
 validate:
   stage: test
   image: python:3.12-alpine
   script:
     - python tool/validate.py
+    - python -m unittest discover -s tool -p test_geo_catalog.py
 
 pages:
   stage: deploy

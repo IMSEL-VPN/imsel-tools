@@ -1,5 +1,4 @@
-// Модель профиля маршрутизации — точный порт семантики приложения
-// (внешний формат обмена: PascalCase JSON + строки-булевы, Base64).
+// Public routing exchange format: PascalCase JSON, Base64 links.
 import { encodeText } from './codec.js';
 
 export const LINK_ERRORS = {
@@ -9,10 +8,12 @@ export const LINK_ERRORS = {
   unsupportedCommand: 'unsupportedCommand',
   invalidBase64: 'invalidBase64',
   invalidJson: 'invalidJson',
+  invalidProfile: 'invalidProfile',
 };
 
-export const DOMAIN_STRATEGIES = ['AsIs', 'IPIfNonMatch', 'IPOnDemand'];
+export const DOMAIN_STRATEGIES = ['none', 'AsIs', 'IPIfNonMatch', 'IPOnDemand'];
 export const DIRECT_DOMAIN_STRATEGIES = ['AsIs', 'UseIP', 'UseIPv4', 'UseIPv6'];
+export const QUERY_STRATEGIES = ['UseIP', 'UseIPv4', 'UseIPv6', 'none'];
 export const ROUTE_ORDERS = [
   { value: 'block,direct,proxy', label: 'Block → Direct → Proxy' },
   { value: 'block,proxy,direct', label: 'Block → Proxy → Direct' },
@@ -74,8 +75,94 @@ function knownDirectStrategy(raw) {
   return found === undefined ? null : found;
 }
 
+function optionalFields(json) {
+  const out = {};
+  for (const [wire, key] of [
+    ['Rules', 'rules'], ['Outbounds', 'outbounds'],
+    ['DnsServers', 'dnsServers'], ['QueryStrategy', 'queryStrategy'],
+    ['BlockAds', 'blockAds'],
+    ['GeoipSha256Url', 'geoipSha256Url'], ['GeositeSha256Url', 'geositeSha256Url'],
+    ['GeoUpdateIntervalHours', 'geoUpdateIntervalHours'],
+  ]) {
+    const value = json[wire] !== undefined ? json[wire] : json[key];
+    if (value === undefined) continue;
+    if (key === 'geoUpdateIntervalHours') {
+      if (!Number.isInteger(value) || value < 0 || value > 8760) {
+        throw LINK_ERRORS.invalidProfile;
+      }
+      out[key] = value;
+    } else if (key === 'geoipSha256Url' || key === 'geositeSha256Url') {
+      if (typeof value !== 'string') throw LINK_ERRORS.invalidProfile;
+      const url = value.trim();
+      if (url !== '') {
+        let parsed;
+        try { parsed = new URL(url); } catch (_) { throw LINK_ERRORS.invalidProfile; }
+        if (!/^https?:\/\//i.test(url) || parsed.hostname === ''
+          || parsed.username !== '' || parsed.password !== '' || url.includes('#')
+          || /\s/.test(url) || (parsed.port !== '' && Number(parsed.port) < 1)) {
+          throw LINK_ERRORS.invalidProfile;
+        }
+      }
+      out[key] = url;
+    } else if (key === 'queryStrategy') {
+      const canonical = typeof value === 'string'
+        ? QUERY_STRATEGIES.find((s) => s.toLowerCase() === value.trim().toLowerCase())
+        : undefined;
+      if (canonical === undefined) throw LINK_ERRORS.invalidProfile;
+      out[key] = canonical;
+    } else if (key === 'blockAds') {
+      if (typeof value !== 'boolean') throw LINK_ERRORS.invalidProfile;
+      out[key] = value;
+    } else {
+      if (!Array.isArray(value) || value.some((item) =>
+        item === null || typeof item !== 'object' || Array.isArray(item))) {
+        throw LINK_ERRORS.invalidProfile;
+      }
+      out[key] = value.map((item) => {
+        if (key === 'outbounds' && (typeof item.tag !== 'string'
+          || typeof item.protocol !== 'string'
+          || (item.settings !== undefined && (item.settings === null
+            || typeof item.settings !== 'object' || Array.isArray(item.settings))))) {
+          throw LINK_ERRORS.invalidProfile;
+        }
+        if (key === 'rules') {
+          for (const field of ['id', 'name', 'action', 'port', 'network', 'customTag']) {
+            if (item[field] !== undefined && typeof item[field] !== 'string') {
+              throw LINK_ERRORS.invalidProfile;
+            }
+          }
+          for (const field of ['domain', 'ip', 'process', 'protocol']) {
+            if (item[field] !== undefined && (!Array.isArray(item[field])
+              || item[field].some((v) => typeof v !== 'string'))) {
+              throw LINK_ERRORS.invalidProfile;
+            }
+          }
+          for (const field of ['enabled', 'locked']) {
+            if (item[field] !== undefined && typeof item[field] !== 'boolean') {
+              throw LINK_ERRORS.invalidProfile;
+            }
+          }
+          if (!['proxy', 'direct', 'block', 'dns', 'custom'].includes(item.action)) {
+            throw LINK_ERRORS.invalidProfile;
+          }
+        }
+        if (key !== 'dnsServers') return JSON.parse(JSON.stringify(item));
+        const { address, port = '', domains = [], enabled = true } = item;
+        if (typeof address !== 'string' || address.trim() === '' || typeof port !== 'string'
+          || !Array.isArray(domains) || domains.some((d) => typeof d !== 'string')
+          || typeof enabled !== 'boolean') throw LINK_ERRORS.invalidProfile;
+        return { address, port, domains: [...domains], enabled };
+      });
+    }
+  }
+  return out;
+}
+
 // fromJson: оба регистра ключей, безопасные дефолты для отсутствующих полей.
 export function profileFromJson(json) {
+  if (json === null || typeof json !== 'object' || Array.isArray(json)) {
+    throw LINK_ERRORS.invalidJson;
+  }
   return {
     name: asString(json, 'Name', 'name'),
     globalProxy: asBoolStr(json, 'GlobalProxy', 'globalProxy', true),
@@ -104,10 +191,11 @@ export function profileFromJson(json) {
     routeOrder: asString(json, 'RouteOrder', 'routeOrder'),
     useChunkFiles: asBoolStr(json, 'UseChunkFiles', 'useChunkFiles', false),
     lastUpdated: asInt(json, 'LastUpdated', 'lastUpdatedDate'),
+    ...optionalFields(json),
   };
 }
 
-// toJson: PascalCase, булевы поля строками, порядок ключей как в приложении.
+// Legacy booleans remain strings; BlockAds is a wire boolean.
 // DirectDomainStrategy включается только при известном значении,
 // RouteOrder — только при заданном, LastUpdated — всегда строкой.
 export function profileToJson(p) {
@@ -140,6 +228,9 @@ export function profileToJson(p) {
   out['LastUpdated'] = p.lastUpdated === null || p.lastUpdated === undefined
     ? ''
     : String(p.lastUpdated);
+  for (const [key, value] of Object.entries(optionalFields(p))) {
+    out[key[0].toUpperCase() + key.slice(1)] = value;
+  }
   return out;
 }
 

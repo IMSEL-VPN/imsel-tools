@@ -6,7 +6,20 @@
 <title>$TITLE$</title>
 <meta name="description" content="$DESC$">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234ade80' stroke-width='2'%3E%3Cpath d='M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5z'/%3E%3C/svg%3E">
+<script>
+// Apply the stored theme before styles load to avoid a first-paint flash.
+(() => {
+  let theme = "system";
+  try {
+    const saved = localStorage.getItem("imsel-tools-theme");
+    if (saved === "light" || saved === "dark") theme = saved;
+  } catch {}
+  document.documentElement.dataset.theme = theme;
+})();
+</script>
 <link rel="stylesheet" href="$ROOT$/assets/css/main.css">
+<link rel="stylesheet" href="$ROOT$/assets/css/theme.css">
+<script type="module" src="$ROOT$/assets/js/theme.js"></script>
 </head>
 <body data-lang="{{LANG}}" data-copied="{{t:common.copied}}" data-chars-label="{{t:common.chars}}">
 <header class="site-header">
@@ -16,6 +29,14 @@
       <span class="brand-name">{{t:brand}}</span>
     </a>
     <nav class="tool-nav" aria-label="{{t:home.heading}}">$NAV$</nav>
+    <label class="theme-control" for="theme-select">
+      <span>{{t:common.themeLabel}}</span>
+      <select id="theme-select">
+        <option value="system">{{t:common.themeSystem}}</option>
+        <option value="light">{{t:common.themeLight}}</option>
+        <option value="dark">{{t:common.themeDark}}</option>
+      </select>
+    </label>
     <a class="lang-switch" href="$OTHER_HREF$" hreflang="{{OTHER_LANG}}">{{t:common.langSwitch}}</a>
   </div>
 </header>

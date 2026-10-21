@@ -1,6 +1,8 @@
 // Routing Builder: визуальный редактор профиля маршрутизации.
 import { initCopyButtons, initCounters, showStatus } from './common.js';
 import { decodeToText } from './codec.js';
+import { initGeoPicker } from './geo-picker.js';
+import { initConfigPreview } from './config-preview-ui.js';
 import {
   profileFromJson,
   profileToJson,
@@ -25,6 +27,7 @@ const LIST_KEYS = [
 ];
 let jsonDirty = false;
 let dnsHostsValid = true;
+let renderConfigPreview = () => {};
 
 function errorText(code) {
   const btn = $('import-btn');
@@ -35,6 +38,7 @@ function errorText(code) {
     unsupportedCommand: 'errUnsupportedCommand',
     invalidBase64: 'errInvalidBase64',
     invalidJson: 'errInvalidJson',
+    invalidProfile: 'errInvalidProfile',
     badInput: 'errBadInput',
   }[code] || 'errBadInput';
   return btn.dataset[key] || key;
@@ -64,18 +68,20 @@ function nullableText(el) {
 function formToState() {
   const p = state.profile;
   p.name = nullableText($('f-name'));
-  p.globalProxy = $('f-globalproxy').checked;
-  p.routeOrder = nullableText($('f-routeorder'));
-  p.domainStrategy = nullableText($('f-domainstrategy'));
-  p.directDomainStrategy = nullableText($('f-directdomainstrategy'));
-  p.fakeDns = $('f-fakedns').checked;
+  if (!$('f-globalproxy').disabled) p.globalProxy = $('f-globalproxy').checked;
+  if (!$('f-routeorder').disabled) p.routeOrder = nullableText($('f-routeorder'));
+  if (!$('f-domainstrategy').disabled) p.domainStrategy = nullableText($('f-domainstrategy'));
+  if (!$('f-directdomainstrategy').disabled) p.directDomainStrategy = nullableText($('f-directdomainstrategy'));
+  if (!$('f-fakedns').disabled) p.fakeDns = $('f-fakedns').checked;
   p.useChunkFiles = $('f-usechunkfiles').checked;
-  p.remoteDnsType = nullableText($('f-remotetype'));
-  p.remoteDnsDomain = nullableText($('f-remotedomain'));
-  p.remoteDnsIp = nullableText($('f-remoteip'));
-  p.domesticDnsType = nullableText($('f-domestictype'));
-  p.domesticDnsDomain = nullableText($('f-domesticdomain'));
-  p.domesticDnsIp = nullableText($('f-domesticip'));
+  if (!$('f-remotetype').disabled) {
+    p.remoteDnsType = nullableText($('f-remotetype'));
+    p.remoteDnsDomain = nullableText($('f-remotedomain'));
+    p.remoteDnsIp = nullableText($('f-remoteip'));
+    p.domesticDnsType = nullableText($('f-domestictype'));
+    p.domesticDnsDomain = nullableText($('f-domesticdomain'));
+    p.domesticDnsIp = nullableText($('f-domesticip'));
+  }
   p.geoipUrl = nullableText($('f-geoipurl'));
   p.geositeUrl = nullableText($('f-geositeurl'));
   const ts = nullableText($('f-lastupdated'));
@@ -84,6 +90,7 @@ function formToState() {
 }
 
 function parseDnsHostsInput() {
+  if ($('f-dnshosts').disabled) return;
   const raw = $('f-dnshosts').value.trim();
   if (raw === '') {
     state.profile.dnsHosts = {};
@@ -127,9 +134,11 @@ function renderChips(listName) {
     label.textContent = value;
     const remove = document.createElement('button');
     remove.type = 'button';
+    remove.disabled = state.profile.rules !== undefined;
     remove.textContent = '×';
     remove.setAttribute('aria-label', '×');
     remove.addEventListener('click', () => {
+      if (state.profile.rules !== undefined) return;
       state.profile[listName].splice(index, 1);
       renderChips(listName);
       render();
@@ -141,6 +150,24 @@ function renderChips(listName) {
 
 function stateToForm() {
   const p = state.profile;
+  const fullRules = p.rules !== undefined;
+  const fullDns = p.dnsServers !== undefined;
+  const fullOutbounds = p.outbounds !== undefined;
+  $('advanced-notice').hidden = !(fullRules || fullDns || fullOutbounds
+    || p.queryStrategy !== undefined || p.blockAds !== undefined
+    || p.geoipSha256Url !== undefined || p.geositeSha256Url !== undefined
+    || p.geoUpdateIntervalHours !== undefined);
+  for (const id of ['f-globalproxy', 'f-routeorder', 'f-domainstrategy']) {
+    $(id).disabled = fullRules;
+  }
+  $('f-directdomainstrategy').disabled = fullRules || fullOutbounds;
+  for (const id of ['f-remotetype', 'f-remotedomain', 'f-remoteip',
+    'f-domestictype', 'f-domesticdomain', 'f-domesticip', 'f-dnshosts', 'f-fakedns']) {
+    $(id).disabled = fullRules || fullDns;
+  }
+  document.querySelectorAll('.list-add-row input, .list-add-row .btn').forEach((el) => {
+    el.disabled = fullRules;
+  });
   $('f-name').value = p.name ?? '';
   $('f-globalproxy').checked = p.globalProxy;
   $('f-routeorder').value = p.routeOrder ?? '';
@@ -195,6 +222,7 @@ function render() {
       2,
     );
   }
+  renderConfigPreview();
 }
 
 function importFromObject(obj) {
@@ -263,6 +291,7 @@ function bindJsonEditor() {
   const status = $('json-status');
   editor.addEventListener('input', () => {
     jsonDirty = true;
+    renderConfigPreview();
   });
   $('json-apply').addEventListener('click', () => {
     try {
@@ -305,6 +334,7 @@ function bindLists() {
     const input = editor.querySelector('.list-add-row input');
     const addBtn = editor.querySelector('.list-add-row .btn');
     const add = () => {
+      if (state.profile.rules !== undefined) return;
       const value = input.value.trim();
       if (value === '') return;
       const list = state.profile[key];
@@ -379,9 +409,25 @@ function init() {
   stateToForm();
   bindTabs();
   bindLists();
+  initGeoPicker({
+    getProfile: () => state.profile,
+    onAdd(key, values) {
+      if (state.profile.rules !== undefined) return;
+      const list = state.profile[key];
+      for (const value of values) {
+        if (!list.includes(value)) list.push(value);
+      }
+      renderChips(key);
+      render();
+    },
+  });
   bindForm();
   bindImport();
   bindJsonEditor();
+  renderConfigPreview = initConfigPreview({
+    getProfile: () => state.profile,
+    isValid: () => dnsHostsValid && !jsonDirty,
+  });
   render();
   importFromHash();
   initCopyButtons();
