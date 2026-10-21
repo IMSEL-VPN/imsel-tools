@@ -14,6 +14,9 @@ core-tests:
     - node tool/test_theme.mjs
     - node tool/test_config_preview.mjs
     - node tool/test_config_preview_ui.mjs
+    - node tool/test_dns_editor.mjs
+    - node tool/test_rules_editor.mjs
+    - node tool/test_outbounds_editor.mjs
 
 validate:
   stage: test

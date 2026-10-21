@@ -7,6 +7,19 @@
 <section class="panel">
   <h2 class="panel-title">{{t:routing.importTitle}}</h2>
   <div class="panel-body">
+    <div class="row">
+      <label for="template-select">{{t:routing.templateLabel}}</label>
+      <select id="template-select">
+        <option value="app">{{t:routing.templateApp}}</option>
+        <option value="blank">{{t:routing.templateBlank}}</option>
+        <option value="legacy">{{t:routing.templateLegacy}}</option>
+      </select>
+      <button type="button" id="template-apply" class="btn"
+        data-name="{{t:routing.templateName}}" data-dns-proxy="{{t:routing.templateDnsProxy}}"
+        data-dns-direct="{{t:routing.templateDnsDirect}}" data-local="{{t:routing.geoLocal}}"
+        data-all="{{t:routing.templateAll}}">{{t:routing.templateApply}}</button>
+    </div>
+    <p class="hint">{{t:routing.templateHint}}</p>
     <textarea id="import-input" class="mono" rows="3" placeholder="{{t:routing.importHint}}"></textarea>
     <div class="row">
       <button type="button" id="import-btn" class="btn btn-primary"
@@ -27,6 +40,20 @@
 <section class="panel">
   <h2 class="panel-title">{{t:routing.linkTitle}}</h2>
   <div class="panel-body">
+    <div class="field">
+      <label for="link-mode">{{t:routing.linkMode}}</label>
+      <select id="link-mode">
+        <option value="inline">{{t:routing.linkInline}}</option>
+        <option value="url">{{t:routing.linkUrl}}</option>
+        <option value="auto">{{t:routing.linkAuto}}</option>
+      </select>
+    </div>
+    <div id="link-source-field" class="field" hidden>
+      <label for="link-source-url">{{t:routing.linkSourceUrl}}</label>
+      <input type="url" id="link-source-url" placeholder="https://example.org/routing.json" autocomplete="off">
+      <p class="hint">{{t:routing.linkSourceHint}}</p>
+      <p id="link-source-error" class="status status-error" role="status" hidden>{{t:routing.linkSourceInvalid}}</p>
+    </div>
     <div class="field field-toggle">
       <div class="field-head">
         <label for="onadd-toggle">{{t:routing.onaddLabel}}</label>
@@ -35,8 +62,9 @@
       <label class="switch"><input type="checkbox" id="onadd-toggle"><span class="switch-track"></span></label>
     </div>
     <textarea id="link-output" class="mono" rows="3" readonly></textarea>
+    <p id="profile-graph-error" class="status status-error" role="status" hidden>{{t:routing.errInvalidProfile}}</p>
     <div class="row">
-      <button type="button" class="btn" data-copy="link-output">{{t:common.copy}}</button>
+      <button type="button" id="link-copy" class="btn" data-copy="link-output">{{t:common.copy}}</button>
     </div>
     <h3 class="sub-title">{{t:routing.qrTitle}}</h3>
     <div id="qr-box" class="qr-box" hidden></div>
@@ -52,6 +80,7 @@
       <button type="button" class="tab-btn" data-tab="dns" role="tab">{{t:routing.tabDns}}</button>
       <button type="button" class="tab-btn" data-tab="geo" role="tab">{{t:routing.tabGeo}}</button>
       <button type="button" class="tab-btn" data-tab="rules" role="tab">{{t:routing.tabRules}}</button>
+      <button type="button" class="tab-btn" data-tab="outbounds" role="tab">{{t:routing.tabOutbounds}}</button>
     </div>
     <p id="advanced-notice" class="hint" role="status" hidden>{{t:routing.advancedNotice}}</p>
 
@@ -70,12 +99,21 @@
         </div>
         <label class="switch"><input type="checkbox" id="f-globalproxy"><span class="switch-track"></span></label>
       </div>
+      <p id="fallback-summary" class="hint" role="status"
+        data-proxy="{{t:routing.fallbackProxy}}" data-direct="{{t:routing.fallbackDirect}}"></p>
       <div class="field">
         <div class="field-head">
           <label for="f-routeorder">{{t:routing.routeOrderLabel}}</label>
           <span class="field-desc">{{t:routing.routeOrderDesc}}</span>
         </div>
         <select id="f-routeorder"></select>
+      </div>
+      <div class="field field-toggle">
+        <div class="field-head">
+          <label for="f-blockads">{{t:routing.blockAdsLabel}}</label>
+          <span class="field-desc">{{t:routing.blockAdsDesc}}</span>
+        </div>
+        <label class="switch"><input type="checkbox" id="f-blockads"><span class="switch-track"></span></label>
       </div>
       <div class="field">
         <div class="field-head">
@@ -108,55 +146,41 @@
     </div>
 
     <div class="tab-panel" id="tab-dns">
-      <h3 class="sub-title">{{t:routing.remoteDnsTitle}}</h3>
+      <h3 class="sub-title">{{t:routing.dnsServersTitle}}</h3>
+      <p class="hint">{{t:routing.dnsServersLead}}</p>
+      <p class="hint">{{t:routing.dnsLocalFallback}}</p>
+      <p class="hint">{{t:routing.dnsPortHint}}</p>
+      <div id="dns-editor-list"
+        data-server="{{t:routing.dnsServer}}"
+        data-enabled="{{t:routing.dnsServerEnabled}}"
+        data-remove="{{t:routing.dnsRemove}}"
+        data-up="{{t:routing.dnsUp}}"
+        data-down="{{t:routing.dnsDown}}"
+        data-type="{{t:routing.dnsTypeLabel}}"
+        data-address="{{t:routing.dnsAddress}}"
+        data-port="{{t:routing.dnsPort}}"
+        data-domains="{{t:routing.dnsDomains}}"
+        data-domain-hint="{{t:routing.dnsDomainsHint}}"
+        data-local-hint="{{t:routing.dnsLocalHint}}"
+        data-routed-hint="{{t:routing.dnsRoutedHint}}"
+        data-unsupported="{{t:routing.dnsCustomHint}}"
+        data-system="{{t:routing.dnsSystem}}"
+        data-custom="{{t:routing.dnsCustom}}"></div>
+      <p id="dns-empty" class="hint" hidden>{{t:routing.dnsEmpty}}</p>
+      <p id="dns-editor-status" class="status status-error" role="status" hidden
+        data-invalid="{{t:routing.dnsEditorInvalid}}"></p>
+      <div class="row">
+        <button type="button" id="dns-add" class="btn">{{t:routing.dnsAdd}}</button>
+      </div>
       <div class="field">
-        <div class="field-head">
-          <label for="f-remotetype">{{t:routing.dnsTypeLabel}}</label>
-          <span class="field-desc">{{t:routing.dnsTypeDesc}}</span>
-        </div>
-        <select id="f-remotetype">
-          <option value="DoH">DoH (DNS-over-HTTPS)</option>
-          <option value="DoU">DoU (DNS-over-UDP)</option>
+        <label for="dns-query-strategy">{{t:routing.dnsQueryStrategy}}</label>
+        <select id="dns-query-strategy">
+          <option value="">{{t:routing.dnsQueryDefault}}</option>
+          <option value="UseIP">A + AAAA (UseIP)</option>
+          <option value="UseIPv4">A (UseIPv4)</option>
+          <option value="UseIPv6">AAAA (UseIPv6)</option>
+          <option value="none">none (UseIP)</option>
         </select>
-      </div>
-      <div class="field">
-        <div class="field-head">
-          <label for="f-remotedomain">{{t:routing.dnsDomainLabel}}</label>
-          <span class="field-desc">{{t:routing.dnsDomainDesc}}</span>
-        </div>
-        <input type="text" id="f-remotedomain" placeholder="https://cloudflare-dns.com/dns-query">
-      </div>
-      <div class="field">
-        <div class="field-head">
-          <label for="f-remoteip">{{t:routing.dnsIpLabel}}</label>
-          <span class="field-desc">{{t:routing.dnsIpDesc}}</span>
-        </div>
-        <input type="text" id="f-remoteip" placeholder="1.1.1.1">
-      </div>
-      <h3 class="sub-title">{{t:routing.domesticDnsTitle}}</h3>
-      <div class="field">
-        <div class="field-head">
-          <label for="f-domestictype">{{t:routing.dnsTypeLabel}}</label>
-          <span class="field-desc">{{t:routing.dnsTypeDesc}}</span>
-        </div>
-        <select id="f-domestictype">
-          <option value="DoH">DoH (DNS-over-HTTPS)</option>
-          <option value="DoU">DoU (DNS-over-UDP)</option>
-        </select>
-      </div>
-      <div class="field">
-        <div class="field-head">
-          <label for="f-domesticdomain">{{t:routing.dnsDomainLabel}}</label>
-          <span class="field-desc">{{t:routing.dnsDomainDesc}}</span>
-        </div>
-        <input type="text" id="f-domesticdomain" placeholder="https://dns.google/dns-query">
-      </div>
-      <div class="field">
-        <div class="field-head">
-          <label for="f-domesticip">{{t:routing.dnsIpLabel}}</label>
-          <span class="field-desc">{{t:routing.dnsIpDesc}}</span>
-        </div>
-        <input type="text" id="f-domesticip" placeholder="8.8.8.8">
       </div>
       <div class="field">
         <div class="field-head">
@@ -167,6 +191,8 @@
 </textarea>
         <span id="dnshosts-status" class="status status-error" hidden>{{t:routing.dnsHostsInvalid}}</span>
       </div>
+      <p class="hint">{{t:routing.dnsSupportedScope}}</p>
+      <p class="hint"><a href="{{t:routing.dnsDocsUrl}}" target="_blank" rel="noopener">{{t:routing.dnsDocs}}</a></p>
     </div>
 
     <div class="tab-panel" id="tab-geo">
@@ -191,12 +217,53 @@
         </div>
         <input type="text" id="f-lastupdated" inputmode="numeric" placeholder="1693826255">
       </div>
+      <div class="field">
+        <label for="f-geoipchecksum">{{t:routing.geoipChecksumLabel}}</label>
+        <input type="url" id="f-geoipchecksum" placeholder="https://example.org/geoip.dat.sha256sum">
+      </div>
+      <div class="field">
+        <label for="f-geositechecksum">{{t:routing.geositeChecksumLabel}}</label>
+        <input type="url" id="f-geositechecksum" placeholder="https://example.org/geosite.dat.sha256sum">
+      </div>
+      <div class="field">
+        <label for="f-geointerval">{{t:routing.geoIntervalLabel}}</label>
+        <input type="text" id="f-geointerval" inputmode="numeric" placeholder="24">
+        <p class="hint">{{t:routing.geoIntervalHint}}</p>
+      </div>
+      <p id="geo-fields-status" class="status status-error" role="status" hidden>{{t:routing.geoFieldsInvalid}}</p>
     </div>
 
     <div class="tab-panel" id="tab-rules"
       data-geo-sites="{{t:routing.chooseGeosite}}"
       data-geo-ip="{{t:routing.chooseGeoip}}">
       <p class="hint">{{t:routing.rulesLead}}</p>
+      <section id="rules-editor"
+        data-rule="{{t:routing.ruleTitle}}" data-name="{{t:routing.ruleName}}"
+        data-action="{{t:routing.ruleAction}}" data-enabled="{{t:routing.ruleEnabled}}"
+        data-locked="{{t:routing.ruleLocked}}" data-domain="{{t:routing.ruleDomain}}"
+        data-ip="{{t:routing.ruleIp}}" data-port="{{t:routing.rulePort}}"
+        data-network="{{t:routing.ruleNetwork}}" data-process="{{t:routing.ruleProcess}}"
+        data-protocol="{{t:routing.ruleProtocol}}" data-custom-tag="{{t:routing.ruleCustomTag}}"
+        data-up="{{t:routing.dnsUp}}" data-down="{{t:routing.dnsDown}}"
+        data-remove="{{t:routing.dnsRemove}}" data-duplicate="{{t:routing.ruleDuplicate}}"
+        data-invalid="{{t:routing.ruleInvalid}}" data-order-hint="{{t:routing.ruleOrderHint}}"
+        data-action-proxy="{{t:routing.actionProxy}}" data-action-direct="{{t:routing.actionDirect}}"
+        data-action-block="{{t:routing.actionBlock}}" data-action-dns="DNS"
+        data-action-custom="{{t:routing.actionCustom}}">
+        <h3 class="sub-title">{{t:routing.ruleEditorTitle}}</h3>
+        <p class="hint">{{t:routing.ruleEditorHint}}</p>
+        <p class="hint">{{t:routing.ruleOrderHint}}</p>
+        <div class="row">
+          <button type="button" id="rules-enable" class="btn">{{t:routing.ruleEnable}}</button>
+          <button type="button" id="rules-add" class="btn">{{t:routing.ruleAdd}}</button>
+        </div>
+        <p id="rules-status" class="status status-error" role="status" hidden></p>
+        <p id="rules-empty" class="hint" hidden>{{t:routing.ruleEmpty}}</p>
+        <div id="rules-list"></div>
+      </section>
+      <details id="simple-rules">
+        <summary>{{t:routing.simpleRulesTitle}}</summary>
+        <p class="hint">{{t:routing.simpleRulesHint}}</p>
       <div class="list-editor" data-list="directSites">
         <div class="field-head">
           <span class="field-label">{{t:routing.directSitesLabel}}</span>
@@ -263,6 +330,35 @@
           <button type="button" class="btn">{{t:routing.addItemLabel}}</button>
         </div>
       </div>
+      </details>
+    </div>
+    <div class="tab-panel" id="tab-outbounds">
+      <section id="outbounds-editor"
+        data-title="{{t:routing.outboundTitle}}" data-tag="{{t:routing.outboundTag}}"
+        data-protocol="{{t:routing.outboundProtocol}}" data-settings="{{t:routing.outboundSettings}}"
+        data-extra="{{t:routing.outboundExtra}}" data-domain-strategy="{{t:routing.directDomainStrategyLabel}}"
+        data-up="{{t:routing.dnsUp}}" data-down="{{t:routing.dnsDown}}" data-remove="{{t:routing.dnsRemove}}"
+        data-invalid="{{t:routing.outboundInvalid}}" data-add-invalid="{{t:routing.outboundInvalid}}"
+        data-protected="{{t:routing.outboundProtected}}" data-references="{{t:routing.outboundProtected}}">
+        <h3 class="sub-title">{{t:routing.outboundEditorTitle}}</h3>
+        <p class="hint">{{t:routing.outboundHint}}</p>
+        <button type="button" id="outbounds-enable" class="btn">{{t:routing.outboundEnable}}</button>
+        <div class="row">
+          <label for="outbounds-kind">{{t:routing.outboundKind}}</label>
+          <select id="outbounds-kind">
+            <option value="freedom">Freedom</option>
+            <option value="blackhole">Blackhole</option>
+            <option value="dns">DNS</option>
+            <option value="socks">SOCKS</option>
+            <option value="http">HTTP</option>
+            <option value="json">JSON</option>
+          </select>
+          <button type="button" id="outbounds-add" class="btn">{{t:routing.outboundAdd}}</button>
+        </div>
+        <p id="outbounds-status" class="status status-error" role="status" hidden></p>
+        <p id="outbounds-empty" class="hint" hidden>{{t:routing.outboundEmpty}}</p>
+        <div id="outbounds-list"></div>
+      </section>
     </div>
   </div>
 </section>

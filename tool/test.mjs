@@ -10,6 +10,7 @@ const src = (p) => readFileSync(path.join(root, 'src', 'js', p), 'utf8');
 
 const codec = await import('../src/js/codec.js');
 const profileMod = await import('../src/js/profile.js');
+const { profileTemplate } = await import('../src/js/profile-templates.js');
 
 let passed = 0;
 function test(name, fn) {
@@ -28,9 +29,30 @@ const {
 const {
   profileFromJson, profileToJson, buildLink, parseRoutingLink,
   tryParseRoutingLink, encodeProfileB64, defaultProfile, LINK_ERRORS,
+  buildSourceLink, validateRoutingSourceUrl,
 } = profileMod;
 
 // ── Base64 кодек ──────────────────────────────────────────────────────
+test('profile templates are independent and use the app default public settings', () => {
+  const app = profileTemplate('app');
+  assert.deepEqual(app.dnsServers.map((row) => row.address), ['1.1.1.1', '8.8.8.8']);
+  assert.deepEqual(app.rules.map((row) => row.action), ['proxy', 'direct', 'direct', 'proxy']);
+  assert.equal(app.rules[3].port, '0-65535');
+  assert.equal(app.rules[2].ip[0], 'geoip:private');
+  assert.deepEqual(app.dnsHosts, { 'domain:googleapis.cn': 'googleapis.com' });
+  assert.equal(app.geoUpdateIntervalHours, 0);
+  assert.deepEqual(app.outbounds.map((row) => row.tag), ['direct', 'block']);
+  app.rules[0].ip.push('modified');
+  assert.deepEqual(profileTemplate('app').rules[0].ip, ['1.1.1.1']);
+  assert.deepEqual(profileTemplate('blank').rules, []);
+  assert.deepEqual(profileTemplate('blank').dnsServers, []);
+  assert.equal(profileTemplate('legacy').rules, undefined);
+  for (const kind of ['app', 'blank', 'legacy']) {
+    const p = profileTemplate(kind);
+    assert.deepEqual(profileToJson(parseRoutingLink(buildLink(p, 'add')).profile), profileToJson(p));
+  }
+});
+
 test('b64: UTF-8 round-trip совпадает с Node Buffer', () => {
   const cases = ['Hello World!', '{"GlobalProxy":"false"}', 'привет мир', ' протест ', '༑', '𝄞 AudioClip'];
   for (const c of cases) {
@@ -447,6 +469,7 @@ test('full data: six outbounds, >100KB, nested unknown fields and order preserve
   input.Outbounds = Array.from({ length: 6 }, (_, i) => ({
     tag: `extra-${i}`, protocol: 'freedom', settings: { future: { list: [false, null, i, { data: 'x'.repeat(18000) }] } },
   }));
+  input.Rules[0].customTag = 'extra-0';
   input.Rules[0].future = { ordered: [3, 1, null, { unknown: true }] };
   assert.ok(JSON.stringify(input).length > 100000);
   let p = profileFromJson(input);
@@ -505,6 +528,19 @@ function routingHarness() {
     ...profileMod, decodeToText,
     initCopyButtons() {}, initCounters() {},
     initGeoPicker() {},
+    profileTemplate,
+    initRulesEditor() { return { refresh() {}, isValid: () => true }; },
+    initOutboundsEditor() { return { refresh() {}, isValid: () => true }; },
+    initDnsEditor() {
+      return {
+        isValid: () => get('dns-editor-status').hidden !== false,
+        refresh() {
+          get('dns-editor-status').hidden = true;
+          get('dns-add').disabled = false;
+          get('dns-query-strategy').disabled = false;
+        },
+      };
+    },
     initConfigPreview() { return () => {}; },
     showStatus(el, text, error) { el.hidden = false; el.textContent = text; el.error = error; },
   };
@@ -523,14 +559,14 @@ function routingHarness() {
   };
 }
 
-test('form: full Rules lock simplified controls; all allowed edits retain advanced data', () => {
+test('form: full Rules lock only legacy lists; global routing and DNS remain independent', () => {
   const ui = routingHarness();
   ui.import(fullProfile);
   assert.equal(ui.get('advanced-notice').hidden, false);
-  const locked = ['f-globalproxy', 'f-routeorder', 'f-domainstrategy',
-    'f-directdomainstrategy', 'f-fakedns', 'f-dnshosts', 'f-remotetype',
-    'f-remotedomain', 'f-remoteip', 'f-domestictype', 'f-domesticdomain', 'f-domesticip'];
+  const locked = ['f-directdomainstrategy'];
   for (const id of locked) assert.equal(ui.get(id).disabled, true, id);
+  for (const id of ['f-globalproxy', 'f-routeorder', 'f-domainstrategy',
+    'f-fakedns', 'f-dnshosts', 'dns-add', 'dns-query-strategy']) assert.equal(ui.get(id).disabled, false, id);
   for (const list of ui.lists) {
     assert.equal(list.input.disabled, true);
     assert.equal(list.button.disabled, true);
@@ -546,23 +582,25 @@ test('form: full Rules lock simplified controls; all allowed edits retain advanc
       assert.deepEqual(ui.output()[key], fullProfile[key], `${id}: ${key}`);
     }
   }
-  ui.get('f-dnshosts').value = '{"must-not-change":"x"}';
+  ui.get('f-dnshosts').value = '{"changed":"192.0.2.1"}';
   ui.get('f-dnshosts').emit('input');
-  assert.deepEqual(ui.output().DnsHosts, fullProfile.DnsHosts);
+  assert.deepEqual(ui.output().DnsHosts, { changed: '192.0.2.1' });
 });
 
 test('form: full DNS alone and empty full fields stay authoritative; JSON edits apply', () => {
   const ui = routingHarness();
   for (const DnsServers of [fullProfile.DnsServers, []]) {
     ui.import({ ...profileToJson(defaultProfile()), DnsServers });
-    assert.equal(ui.get('f-remotetype').disabled, true);
+    assert.equal(ui.get('dns-add').disabled, false);
+    assert.equal(ui.get('f-dnshosts').disabled, false);
+    assert.equal(ui.get('f-fakedns').disabled, false);
     assert.equal(ui.get('f-globalproxy').disabled, false);
     ui.get('f-name').value = 'Renamed';
     ui.get('f-name').emit('input');
     assert.deepEqual(ui.output().DnsServers, DnsServers);
   }
   ui.import({ Rules: [], Outbounds: [] });
-  assert.equal(ui.get('f-routeorder').disabled, true);
+  assert.equal(ui.get('f-routeorder').disabled, false);
   assert.deepEqual(ui.output().Rules, []);
   assert.deepEqual(ui.output().Outbounds, []);
   ui.get('json-editor').value = JSON.stringify(fullProfile);
@@ -576,7 +614,7 @@ test('form: full DNS alone and empty full fields stay authoritative; JSON edits 
   assert.equal(ui.get('link-output').value, previous);
   ui.import({ Outbounds: [] });
   assert.equal(ui.get('f-directdomainstrategy').disabled, true);
-  assert.equal(ui.get('f-remotetype').disabled, false);
+  assert.equal(ui.get('dns-add').disabled, false);
   ui.import({});
   assert.equal(ui.get('advanced-notice').hidden, true);
   assert.equal(ui.get('f-directdomainstrategy').disabled, false);
@@ -592,7 +630,31 @@ test('form: raw JSON, base64 and link imports preserve identical public profile'
   }
 });
 
-test('form: JSON-only Geo fields survive edits without locking simplified controls', () => {
+test('form: templates, fallback, BlockAds and Geo controls produce admitted profiles', () => {
+  const ui = routingHarness();
+  ui.get('template-select').value = 'app'; ui.get('template-apply').click();
+  assert.equal(ui.output().Rules.length, 4);
+  assert.equal(ui.output().DnsServers[0].address, '1.1.1.1');
+  ui.get('f-globalproxy').checked = false; ui.get('f-globalproxy').emit('input');
+  assert.equal(ui.output().GlobalProxy, 'false');
+  assert.equal(ui.output().Rules[3].port, '0-65535');
+  ui.get('f-blockads').checked = false; ui.get('f-blockads').emit('change');
+  assert.equal(ui.output().BlockAds, false);
+  ui.get('f-geoipchecksum').value = 'https://geo.example.org/ip.sha256';
+  ui.get('f-geoipchecksum').emit('input');
+  ui.get('f-geointerval').value = '48'; ui.get('f-geointerval').emit('input');
+  assert.equal(ui.output().GeoipSha256Url, 'https://geo.example.org/ip.sha256');
+  assert.equal(ui.output().GeoUpdateIntervalHours, 48);
+  ui.get('f-geointerval').value = '8761'; ui.get('f-geointerval').emit('input');
+  assert.equal(ui.get('link-output').value, '');
+  ui.get('f-geositechecksum').value = 'https://geo.example.org/site.sha256';
+  ui.get('f-geositechecksum').emit('input');
+  ui.get('f-geointerval').value = '0'; ui.get('f-geointerval').emit('input');
+  assert.equal(ui.output().GeositeSha256Url, 'https://geo.example.org/site.sha256');
+  assert.equal(ui.output().GeoUpdateIntervalHours, 0);
+});
+
+test('form: Geo fields survive unrelated edits without locking simplified controls', () => {
   const ui = routingHarness();
   const fields = { GeoipSha256Url: 'https://geo.example.org/ip.sha256',
     GeositeSha256Url: '', GeoUpdateIntervalHours: 0 };
@@ -600,9 +662,9 @@ test('form: JSON-only Geo fields survive edits without locking simplified contro
   for (const source of [input, encodeText(JSON.stringify(input)),
     `imsel://routing/onadd/${encodeText(JSON.stringify(input))}`]) {
     ui.import(source);
-    assert.equal(ui.get('advanced-notice').hidden, false);
+    assert.equal(ui.get('advanced-notice').hidden, true);
     assert.equal(ui.get('f-globalproxy').disabled, false);
-    assert.equal(ui.get('f-remotetype').disabled, false);
+    assert.equal(ui.get('dns-add').disabled, false);
     for (const id of ['f-name', 'f-geoipurl', 'f-geositeurl', 'f-usechunkfiles']) {
       ui.get(id).value = id === 'f-name' ? 'Renamed' : 'https://changed.example.org/data';
       if (id === 'f-usechunkfiles') ui.get(id).checked = !ui.get(id).checked;
@@ -627,6 +689,144 @@ test('form: JSON-only Geo fields survive edits without locking simplified contro
 });
 
 // ── QR-библиотека (вендоренная) ───────────────────────────────────────
+test('form: invalid DNS draft clears generated link and QR until fixed', () => {
+  const ui = routingHarness();
+  ui.get('dns-editor-status').hidden = false;
+  ui.get('f-name').value = 'Pending DNS';
+  ui.get('f-name').emit('input');
+  assert.equal(ui.get('link-output').value, '');
+  assert.equal(ui.get('link-copy').disabled, true);
+  assert.equal(ui.get('qr-box').hidden, true);
+  ui.get('dns-editor-status').hidden = true;
+  ui.get('f-name').emit('input');
+  assert.ok(ui.get('link-output').value.startsWith('imsel://routing/'));
+  assert.equal(ui.get('link-copy').disabled, false);
+});
+
+test('source links: one-off/automatic, commands, raw and encoded URL queries', () => {
+  for (const automatic of [false, true]) {
+    for (const command of ['add', 'onadd']) {
+      const url = 'https://example.org/profile.json?data=a%2Fb%2Bz&key=123';
+      const link = buildSourceLink(url, { automatic, command });
+      assert.equal(link, `imsel://${automatic ? 'autorouting' : 'routing'}/${command}/${url}`);
+      for (const raw of [link, link.replace(url, encodeURIComponent(url))]) {
+        const parsed = parseRoutingLink(raw);
+        assert.equal(parsed.sourceUrl, url);
+        assert.equal(parsed.automatic, automatic);
+        assert.equal(parsed.command, command);
+        assert.equal(parsed.profile, null);
+      }
+    }
+  }
+  assert.equal(parseRoutingLink('imsel://routing/https://example.org/p').sourceUrl,
+    'https://example.org/p');
+});
+
+test('form: invalid graph after a simplified toggle clears export without throwing', () => {
+  const ui = routingHarness();
+  ui.import({ GlobalProxy: true, Outbounds: [] });
+  ui.get('f-globalproxy').checked = false;
+  ui.get('f-globalproxy').emit('input');
+  assert.equal(ui.get('profile-graph-error').hidden, false);
+  assert.equal(ui.get('link-output').value, '');
+  assert.equal(ui.get('link-copy').disabled, true);
+  ui.get('f-globalproxy').checked = true;
+  ui.get('f-globalproxy').emit('input');
+  assert.equal(ui.get('profile-graph-error').hidden, true);
+  assert.ok(ui.get('link-output').value);
+});
+
+test('source links: invalid URL forms and automatic inline profiles rejected', () => {
+  for (const url of ['', '/relative', 'ftp://example.org/p', 'https://user:pass@example.org/p',
+    'https://example.org/p#', 'https://example.org/p#x', 'https://example.org:0/p',
+    'https://example.org:65536/p', 'https://example.org/a b', 'https://example.org/\\p']) {
+    assert.throws(() => validateRoutingSourceUrl(url));
+    assert.throws(() => buildSourceLink(url));
+  }
+  assert.throws(() => parseRoutingLink(`imsel://autorouting/onadd/${encodeProfileB64(defaultProfile())}`));
+  assert.throws(() => parseRoutingLink('imsel://routing/onadd/https://example.org/p#fragment'));
+  assert.throws(() => parseRoutingLink('imsel://routing/onadd/https://example.org/p#'));
+  assert.equal(validateRoutingSourceUrl('  http://example.org/p  '), 'http://example.org/p');
+});
+
+test('graph: both detour styles resolve; nested extensions remain untouched', () => {
+  const json = {
+    GlobalProxy: 'false',
+    Outbounds: [
+      { tag: 'direct', protocol: 'freedom' },
+      { tag: 'first', protocol: 'socks', proxySettings: { tag: 'second', extra: [1, 2] } },
+      { tag: 'second', protocol: 'socks', streamSettings: { sockopt: { dialerProxy: 'direct', mark: 1 } } },
+    ],
+    Rules: [{ action: 'custom', customTag: 'first', domain: ['full:example.org'] },
+      { action: 'dns', enabled: false }],
+  };
+  const result = profileToJson(profileFromJson(json));
+  assert.deepEqual(result.Outbounds, json.Outbounds);
+  assert.deepEqual(result.Rules, json.Rules);
+});
+
+test('graph: invalid tags, references, cycles, incompatible edges and empty enabled rules reject', () => {
+  const ob = (tag, extra = {}) => ({ tag, protocol: 'freedom', ...extra });
+  const invalid = [
+    { Outbounds: [ob('')] }, { Outbounds: [ob(' extra')] },
+    ...['proxy', 'socks', 'socks-lan', 'http'].map((tag) => ({ Outbounds: [ob(tag)] })),
+    { Outbounds: [ob('a'), ob('a')] }, { Outbounds: [ob('a', { protocol: ' ' })] },
+    { Outbounds: [ob('a', { proxySettings: {} })] },
+    { Outbounds: [ob('a', { proxySettings: { tag: null } })] },
+    { Outbounds: [ob('a', { proxySettings: { tag: 'missing' } })] },
+    { Outbounds: [ob('a', { proxySettings: { tag: 'a' } })] },
+    { Outbounds: [ob('a', { proxySettings: { tag: 'b' } }),
+      ob('b', { streamSettings: { sockopt: { dialerProxy: 'a' } } })] },
+    { Outbounds: [ob('a', { proxySettings: { tag: 'b' },
+      streamSettings: { sockopt: { dialerProxy: 'b' } } }), ob('b')] },
+    { Outbounds: [ob('a', { streamSettings: [] })] },
+    { Outbounds: [ob('a', { streamSettings: { sockopt: { dialerProxy: 1 } } })] },
+    { GlobalProxy: false, Outbounds: [] },
+    { Outbounds: [], Rules: [{ action: 'direct', domain: ['x'] }] },
+    { Outbounds: [], DirectSites: ['x'] }, { Outbounds: [], BlockIp: ['192.0.2.0/24'] },
+    { Outbounds: [], Rules: [{ action: 'custom', customTag: 'dns', domain: ['x'] },
+      { action: 'dns', domain: ['y'] }] },
+    { Outbounds: [ob('a', { proxySettings: { tag: 'dns' } })], Rules: [{ action: 'dns', domain: ['x'] }] },
+    { Rules: [{ action: 'custom', customTag: 'missing', enabled: false }] },
+    { Rules: [{ action: 'proxy' }] }, { Rules: [{ action: 'proxy', domain: ['  '] }] },
+  ];
+  for (const json of invalid) {
+    assert.throws(() => profileFromJson(json), (e) => e === LINK_ERRORS.invalidProfile);
+    assert.throws(() => parseRoutingLink(`imsel://routing/add/${encodeText(JSON.stringify(json))}`));
+  }
+  const stale = defaultProfile();
+  stale.outbounds = [ob('a', { proxySettings: { tag: 'a' } })];
+  assert.throws(() => buildLink(stale, 'add'));
+  assert.doesNotThrow(() => profileFromJson({ Rules: [{ action: 'custom', customTag: 'dns', domain: ['x'] }] }));
+  assert.doesNotThrow(() => profileFromJson({ Outbounds: [], Rules: [], DirectSites: ['ignored'], BlockAds: true }));
+});
+
+test('form: URL modes preserve profile and DNS, invalid URL hides link/QR', () => {
+  const ui = routingHarness();
+  ui.import(fullProfile);
+  const before = ui.get('json-editor').value;
+  ui.get('link-mode').value = 'auto';
+  ui.get('link-mode').emit('change');
+  assert.equal(ui.get('link-output').value, '');
+  assert.equal(ui.get('link-copy').disabled, true);
+  assert.equal(ui.get('qr-box').hidden, true);
+  ui.get('link-source-url').value = 'https://example.org/profile?data=a%2Fb';
+  ui.get('link-source-url').emit('input');
+  assert.equal(parseRoutingLink(ui.get('link-output').value).automatic, true);
+  assert.equal(ui.get('json-editor').value, before);
+  ui.import('imsel://routing/onadd/https://example.org/profile?key=1');
+  assert.equal(ui.get('link-mode').value, 'url');
+  assert.equal(ui.get('link-source-url').value, 'https://example.org/profile?key=1');
+  ui.get('link-mode').value = 'inline';
+  ui.get('link-mode').emit('change');
+  assert.deepEqual(ui.output(), fullProfile);
+  const previous = ui.get('link-output').value;
+  ui.get('json-editor').value = JSON.stringify({ Rules: [{ action: 'custom', customTag: 'missing', domain: ['x'] }] });
+  ui.get('json-apply').click();
+  assert.equal(ui.get('json-status').hidden, false);
+  assert.equal(ui.get('link-output').value, previous);
+});
+
 test('vendor qrcode: UMD-экспорт и генерация SVG', () => {
   const createQr = new Function(
     'module',

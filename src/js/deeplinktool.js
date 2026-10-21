@@ -21,7 +21,7 @@ function classify(raw) {
   if (link === '') return { kind: 'unknown' };
   try {
     const result = parseRoutingLink(link);
-    return { kind: 'routing', profile: result.profile, link };
+    return { kind: 'routing', ...result, link };
   } catch (_) {
     /* не routing-ссылка — проверяем раздачи */
   }
@@ -43,7 +43,9 @@ function analyze() {
   $('dl-kind').textContent = label(KIND_LABELS[result.kind]);
   if (result.kind === 'routing') {
     jsonBox.hidden = false;
-    jsonBox.value = JSON.stringify(profileToJson(result.profile), null, 2);
+    jsonBox.value = JSON.stringify(result.sourceUrl
+      ? { url: result.sourceUrl, automatic: result.automatic, command: result.command }
+      : profileToJson(result.profile), null, 2);
     openBuilder.href = `../routing/#import=${encodeURIComponent(result.link)}`;
     openBuilder.hidden = false;
   } else {

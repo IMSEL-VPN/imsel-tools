@@ -35,6 +35,12 @@ jobs:
         run: node tool/test_config_preview.mjs
       - name: Configuration preview UI tests
         run: node tool/test_config_preview_ui.mjs
+      - name: DNS editor tests
+        run: node tool/test_dns_editor.mjs
+      - name: Rules editor tests
+        run: node tool/test_rules_editor.mjs
+      - name: Outbounds editor tests
+        run: node tool/test_outbounds_editor.mjs
       - name: Geo catalog parser tests
         run: python -m unittest discover -s tool -p test_geo_catalog.py
       - name: Validate

@@ -1,5 +1,6 @@
 // Demonstrative profile-derived preview, not an exact launch configuration.
 // This module deliberately supports only independent outbound topologies.
+import { dnsRows, validateDnsRows } from './dns-servers.js';
 const CODES = new Set([
   'invalidBase', 'selectProxy', 'unsupportedTopology',
   'invalidTarget', 'invalidDns', 'invalidProfile',
@@ -122,53 +123,39 @@ function validateBase(base) {
 
 function dnsConfig(p) {
   const servers = [];
-  if (p.fakeDns) servers.push({ address: 'fakedns' });
-  if (p.dnsServers !== undefined) {
-    if (!Array.isArray(p.dnsServers)) fail('invalidDns');
-    for (const server of p.dnsServers) {
-      if (!object(server) || !text(server.address) || /\s/.test(server.address)
-        || (server.enabled !== undefined && typeof server.enabled !== 'boolean')
-        || (server.domains !== undefined && !strings(server.domains))
-        || (server.port !== undefined && typeof server.port !== 'string')) fail('invalidDns');
-      const port = server.port ?? '';
-      if (port !== '' && (!/^\d+$/.test(port) || Number(port) < 1
-        || Number(port) > 65535)) fail('invalidDns');
-      if (server.enabled === false) continue;
-      const entry = { address: server.address };
-      if (port !== '') entry.port = Number(port);
-      else if (!/^https:\/\//i.test(server.address)) entry.port = 53;
-      if (server.domains?.length) entry.domains = [...server.domains];
-      servers.push(entry);
-    }
-  } else {
-    for (const prefix of ['remote', 'domestic']) {
-      const type = p[`${prefix}DnsType`];
-      const domain = p[`${prefix}DnsDomain`];
-      const ip = p[`${prefix}DnsIp`];
-      if ([type, domain, ip].some((v) => present(v) && typeof v !== 'string')) {
-        fail('invalidDns');
-      }
-      let address;
-      if (type?.toLowerCase() === 'doh') {
-        const host = ip?.includes(':') && !ip.startsWith('[') ? `[${ip}]` : ip;
-        address = domain || (host ? `https://${host}/dns-query` : '');
-      } else address = ip || domain;
-      if (address) {
-        if (!text(address) || /\s/.test(address)) fail('invalidDns');
-        servers.push({ address });
-      }
+  if (p.fakeDns) servers.push({ address: 'fakedns', domains: [] });
+  for (const prefix of ['remote', 'domestic']) {
+    for (const suffix of ['DnsType', 'DnsDomain', 'DnsIp']) {
+      if (p.dnsServers === undefined && present(p[prefix + suffix])
+        && typeof p[prefix + suffix] !== 'string') fail('invalidDns');
     }
   }
-  servers.push('localhost');
+  if (p.dnsServers !== undefined && !Array.isArray(p.dnsServers)) fail('invalidDns');
+  if (p.dnsServers?.some((server) => !object(server)
+    || (server.domains !== undefined && !strings(server.domains)))) fail('invalidDns');
+  const rows = dnsRows(p);
+  if (!validateDnsRows(rows)) fail('invalidDns');
+  for (const server of rows) {
+    if (server.enabled === false) continue;
+    if (server.address.toLowerCase() === 'fakedns' && !p.fakeDns) fail('invalidDns');
+    const entry = { address: server.address };
+    if (server.port !== '') entry.port = Number(server.port);
+    else if (!/^https:\/\//i.test(server.address)) entry.port = 53;
+    if (server.domains.length) entry.domains = [...server.domains];
+    servers.push(entry);
+  }
+  servers.push({ address: 'localhost' });
   const query = p.queryStrategy;
   if (present(query) && !['none', 'UseIP', 'UseIPv4', 'UseIPv6'].includes(query)) {
     fail('invalidDns');
   }
-  const dns = { servers, queryStrategy: !present(query) || query === 'none' ? 'UseIP' : query };
+  const dns = {};
   if (p.dnsHosts !== undefined) {
     if (!object(p.dnsHosts)) fail('invalidDns');
     if (Object.keys(p.dnsHosts).length) dns.hosts = clone(p.dnsHosts, 'invalidDns');
   }
+  dns.queryStrategy = !present(query) || query === 'none' ? 'UseIP' : query;
+  dns.servers = servers;
   return dns;
 }
 
@@ -249,7 +236,7 @@ export function buildConfigPreview(profile, base = null, proxyTag = '') {
       const protocol = { direct: 'freedom', block: 'blackhole', dns: 'dns' }[kind];
       if (explicit && kind !== 'dns') {
         const outbound = p.outbounds.find((item) => item.tag === kind);
-        if (!outbound || outbound.protocol !== protocol) fail('invalidTarget');
+        if (!outbound) fail('invalidTarget');
         helpers.set(kind, kind);
         return kind;
       }
@@ -322,8 +309,15 @@ export function buildConfigPreview(profile, base = null, proxyTag = '') {
         rules.push(rule);
       }
     }
-    rules.push({ type: 'field', network: 'tcp,udp',
-      outboundTag: p.globalProxy === false ? helper('direct') : selected });
+    if (template) {
+      if (!explicit) { helper('direct'); helper('block'); }
+      const defaultTag = p.globalProxy === false ? helper('direct') : selected;
+      const index = config.outbounds.findIndex((outbound) => outbound.tag === defaultTag);
+      if (index > 0) config.outbounds.unshift(...config.outbounds.splice(index, 1));
+    } else {
+      rules.push({ type: 'field', network: 'tcp,udp',
+        outboundTag: p.globalProxy === false ? helper('direct') : selected });
+    }
     const strategy = p.domainStrategy;
     if (present(strategy) && !['none', 'AsIs', 'IPIfNonMatch', 'IPOnDemand'].includes(strategy)) {
       fail('invalidProfile');
@@ -332,7 +326,14 @@ export function buildConfigPreview(profile, base = null, proxyTag = '') {
       domainStrategy: !present(strategy) ? 'IPIfNonMatch' : strategy === 'none' ? 'AsIs' : strategy,
       rules };
     config.dns = dnsConfig(p);
-    return config;
+    // Stable presentation order; do not change the order of outbounds or rules.
+    return {
+      ...(Object.hasOwn(config, 'log') ? { log: config.log } : {}),
+      dns: config.dns,
+      ...(Object.hasOwn(config, 'fakedns') ? { fakedns: config.fakedns } : {}),
+      ...Object.fromEntries(Object.entries(config)
+        .filter(([key]) => !['log', 'dns', 'fakedns'].includes(key))),
+    };
   } catch (error) {
     if (error instanceof Error && CODES.has(error.code)) fail(error.code);
     fail('invalidProfile');

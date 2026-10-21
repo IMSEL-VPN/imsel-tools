@@ -312,6 +312,34 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 #preview-mode { margin-top: 6px; }
 #preview-custom[hidden] { display: none; }
 #preview-output { white-space: pre; }
+.dns-card { border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2); padding: 14px; margin: 14px 0; }
+.dns-card-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.dns-card-head .btn { padding: 6px 10px; }
+.dns-card label { font-size: 13px; }
+.dns-card .field { margin-top: 10px; }
+#dns-query-strategy { margin-top: 6px; }
+#tab-dns > .field { margin-top: 18px; }
+.dns-card input:disabled, .dns-card select:disabled, .dns-card textarea:disabled { opacity: 0.6; }
+.dns-card-head .field { display: flex; align-items: center; gap: 10px; margin: 0; }
+.dns-enabled { appearance: none; flex: none; width: 44px; height: 24px; margin: 0; border: 1px solid var(--border); border-radius: 24px; background: var(--border); cursor: pointer; }
+.dns-enabled::before { content: ""; display: block; width: 18px; height: 18px; margin: 2px; border-radius: 50%; background: var(--text); }
+.dns-enabled:checked { background: var(--accent); }
+.dns-enabled:checked::before { transform: translateX(18px); background: var(--accent-text); }
+.dns-card .list-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.rule-card, .outbound-card { border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin: 14px 0; background: var(--panel-2); }
+.rule-card-head, .outbound-head { display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.rule-card-head .field { display: flex; align-items: center; gap: 8px; }
+.rule-card-head input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--accent); }
+.rule-card .field, .outbound-card .field { margin-top: 12px; }
+.rule-card .field input, .rule-card .field select, .rule-card .field textarea,
+.outbound-card .field input, .outbound-card .field select, .outbound-card .field textarea { margin-top: 5px; }
+.rule-card .list-actions, .outbound-card .list-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.rule-card textarea { min-height: 70px; }
+.outbound-card textarea { font-family: var(--mono); }
+#template-select, #outbounds-kind { width: auto; max-width: 100%; }
+#simple-rules { margin-top: 18px; }
+#simple-rules > summary { cursor: pointer; color: var(--accent); }
+#rules-editor [hidden], #outbounds-editor [hidden] { display: none; }
 
 /* ── QR ── */
 .qr-box {
@@ -324,6 +352,7 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   margin-top: 8px;
 }
 .qr-box svg { width: 240px; height: auto; max-width: 100%; }
+.qr-box[hidden] { display: none; }
 
 /* ── Главная ── */
 .tool-grid {

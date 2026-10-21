@@ -1,5 +1,6 @@
-// Public routing exchange format: PascalCase JSON, Base64 links.
+// Public routing exchange format: PascalCase JSON, inline and URL links.
 import { encodeText } from './codec.js';
+import { validateProfileGraph } from './profile-graph.js';
 
 export const LINK_ERRORS = {
   invalidLink: 'invalidLink',
@@ -163,7 +164,7 @@ export function profileFromJson(json) {
   if (json === null || typeof json !== 'object' || Array.isArray(json)) {
     throw LINK_ERRORS.invalidJson;
   }
-  return {
+  const profile = {
     name: asString(json, 'Name', 'name'),
     globalProxy: asBoolStr(json, 'GlobalProxy', 'globalProxy', true),
     remoteDnsType: asString(json, 'RemoteDNSType', 'remoteDnsType'),
@@ -193,12 +194,15 @@ export function profileFromJson(json) {
     lastUpdated: asInt(json, 'LastUpdated', 'lastUpdatedDate'),
     ...optionalFields(json),
   };
+  validateProfileGraph(profile);
+  return profile;
 }
 
 // Legacy booleans remain strings; BlockAds is a wire boolean.
 // DirectDomainStrategy включается только при известном значении,
 // RouteOrder — только при заданном, LastUpdated — всегда строкой.
 export function profileToJson(p) {
+  validateProfileGraph(p);
   const out = {};
   out['Name'] = p.name ?? '';
   out['GlobalProxy'] = String(p.globalProxy);
@@ -243,15 +247,29 @@ export function buildLink(profile, command) {
   return `imsel://routing/${cmd}/${encodeProfileB64(profile)}`;
 }
 
+export function validateRoutingSourceUrl(input) {
+  const value = String(input).trim();
+  let url;
+  try { url = new URL(value); } catch (_) { throw LINK_ERRORS.invalidLink; }
+  if (!/^https?:\/\//i.test(value) || !url.hostname || url.username || url.password
+    || value.includes('#') || /\s|\\/.test(value)
+    || (url.port !== '' && Number(url.port) < 1)) throw LINK_ERRORS.invalidLink;
+  return value;
+}
+
+export function buildSourceLink(input, { automatic = false, command = 'onadd' } = {}) {
+  const url = validateRoutingSourceUrl(input);
+  return `imsel://${automatic ? 'autorouting' : 'routing'}/${command === 'add' ? 'add' : 'onadd'}/${url}`;
+}
+
 function isRoutingUri(url) {
   const scheme = url.protocol.replace(/:$/, '').toLowerCase();
   if (scheme === 'http' || scheme === 'https') {
     throw LINK_ERRORS.unsupportedScheme;
   }
-  if (url.hostname.toLowerCase() !== 'routing') throw LINK_ERRORS.invalidLink;
+  if (!['routing', 'autorouting'].includes(url.hostname.toLowerCase())) throw LINK_ERRORS.invalidLink;
   if (url.username !== '' || url.password !== '') throw LINK_ERRORS.invalidLink;
   if (url.port !== '') throw LINK_ERRORS.invalidLink;
-  if (url.search !== '') throw LINK_ERRORS.invalidLink;
   if (url.hash !== '') throw LINK_ERRORS.invalidLink;
 }
 
@@ -272,11 +290,10 @@ function decodePayload(raw) {
 // но держим единый путь импорта для Node-тестов и браузера).
 import * as codecModule from './codec.js';
 
-// parseRoutingLink: любая схема кроме http(s), host == routing,
-// команды add/onadd/off (off не поддерживается), base64 → JSON-объект.
+// Inline routing uses Base64 JSON; routing/autorouting may reference HTTP(S).
 export function parseRoutingLink(input) {
   const s = String(input).trim();
-  if (!s.includes('://')) throw LINK_ERRORS.invalidLink;
+  if (!s.includes('://') || s.includes('#')) throw LINK_ERRORS.invalidLink;
   let url;
   try {
     url = new URL(s);
@@ -294,6 +311,20 @@ export function parseRoutingLink(input) {
   if (hasCommand && first === 'off') throw LINK_ERRORS.unsupportedCommand;
   const payloadRaw = hasCommand ? segments.slice(1).join('/') : segments.join('/');
   if (payloadRaw.trim() === '') throw LINK_ERRORS.missingPayload;
+  let source;
+  try { source = /^https?:\/\//i.test(payloadRaw) ? payloadRaw : decodeURIComponent(payloadRaw); }
+  catch (_) { throw LINK_ERRORS.invalidLink; }
+  if (/^https?:\/\//i.test(source)) {
+    return {
+      command: hasCommand ? first : null,
+      sourceUrl: validateRoutingSourceUrl(source + url.search),
+      automatic: url.hostname.toLowerCase() === 'autorouting',
+      profile: null,
+    };
+  }
+  if (url.hostname.toLowerCase() === 'autorouting' || url.search !== '') {
+    throw LINK_ERRORS.invalidLink;
+  }
   const text = decodePayload(payloadRaw);
   let json;
   try {

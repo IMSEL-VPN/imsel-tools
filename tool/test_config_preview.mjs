@@ -80,8 +80,28 @@ test('minimal template is explicitly demonstrative with a safe placeholder', () 
     port: 10808, protocol: 'socks', settings: { udp: true },
     sniffing: { enabled: true, destOverride: ['http', 'tls'] } });
   assert.deepEqual(config.routing, { domainStrategy: 'IPIfNonMatch',
-    rules: [{ type: 'field', network: 'tcp,udp', outboundTag: 'proxy' }] });
-  assert.deepEqual(config.dns, { servers: ['localhost'], queryStrategy: 'UseIP' });
+    rules: [] });
+  assert.deepEqual(config.dns, { queryStrategy: 'UseIP', servers: [{ address: 'localhost' }] });
+});
+
+test('JSON presentation orders log, dns and optional fakedns before other sections', () => {
+  const normal = build(sample());
+  assert.deepEqual(Object.keys(normal).slice(0, 3), ['log', 'dns', 'inbounds']);
+  assert.deepEqual(Object.keys(normal.dns), ['hosts', 'queryStrategy', 'servers']);
+  const fake = build({ ...sample(), fakeDns: true });
+  assert.deepEqual(Object.keys(fake).slice(0, 4), ['log', 'dns', 'fakedns', 'inbounds']);
+  assert.ok(JSON.stringify(fake).indexOf('"dns"') < JSON.stringify(fake).indexOf('"fakedns"'));
+  const base = simpleBase();
+  const scrambled = { extra: { keep: true }, outbounds: base.outbounds, routing: base.routing,
+    inbounds: base.inbounds, dns: base.dns, log: base.log };
+  const before = JSON.stringify(scrambled);
+  const output = build(sample(), scrambled, 'chosen');
+  assert.deepEqual(Object.keys(output).slice(0, 2), ['log', 'dns']);
+  assert.deepEqual(output.extra, { keep: true });
+  assert.deepEqual(output.outbounds.slice(0, base.outbounds.length), base.outbounds);
+  assert.equal(JSON.stringify(scrambled), before);
+  delete scrambled.log;
+  assert.equal(Object.keys(build({}, scrambled, 'chosen'))[0], 'dns');
 });
 
 test('full public sample emits all six simple fields in category/domain-before-IP order', () => {
@@ -94,10 +114,9 @@ test('full public sample emits all six simple fields in category/domain-before-I
     { type: 'field', ip: p.directIp, outboundTag: 'preview-direct' },
     { type: 'field', domain: p.proxySites, outboundTag: 'proxy' },
     { type: 'field', ip: p.proxyIp, outboundTag: 'proxy' },
-    { type: 'field', network: 'tcp,udp', outboundTag: 'proxy' },
   ]);
   assert.deepEqual(config.dns.servers, [
-    { address: 'https://cloudflare-dns.com/dns-query' }, { address: '8.8.8.8' }, 'localhost',
+    { address: 'https://cloudflare-dns.com/dns-query' }, { address: '8.8.8.8', port: 53 }, { address: 'localhost' },
   ]);
   assert.deepEqual(config.dns.hosts, p.dnsHosts);
   for (const key of ['name', 'blockAds', 'geoipUrl', 'geositeUrl', 'geoipSha256Url',
@@ -130,13 +149,54 @@ test('missing, empty or wholly unknown routeOrder defaults block/direct/proxy', 
   }
 });
 
-test('global default always has an explicit tcp,udp rule for both modes', () => {
+test('global default uses first outbound in template and explicit fallback in custom JSON', () => {
   for (const globalProxy of [true, false]) {
     const config = build({ globalProxy });
-    const rule = config.routing.rules.at(-1);
+    assert.equal(config.routing.rules.length, 0);
+    assert.equal(config.outbounds[0].tag, globalProxy ? 'proxy' : 'preview-direct');
+    const rule = build({ globalProxy }, simpleBase(), 'chosen').routing.rules.at(-1);
     assert.deepEqual(rule, { type: 'field', network: 'tcp,udp',
-      outboundTag: globalProxy ? 'proxy' : 'preview-direct' });
+      outboundTag: globalProxy ? 'chosen' : 'preview-direct' });
     if (!globalProxy) assert.equal(byTag(config, rule.outboundTag).protocol, 'freedom');
+  }
+});
+
+test('template defaults always include legacy direct/block helpers without mutating profile', () => {
+  for (const globalProxy of [true, false]) {
+    const p = { globalProxy, rules: [], dnsServers: [], dnsHosts: {} };
+    const before = copy(p);
+    freeze(p);
+    const config = build(p);
+    assert.deepEqual(config.outbounds.map((outbound) => outbound.tag), globalProxy
+      ? ['proxy', 'preview-direct', 'preview-block']
+      : ['preview-direct', 'proxy', 'preview-block']);
+    assert.deepEqual(byTag(config, 'preview-direct'), {
+      tag: 'preview-direct', protocol: 'freedom', settings: {},
+    });
+    assert.deepEqual(byTag(config, 'preview-block'), {
+      tag: 'preview-block', protocol: 'blackhole', settings: {},
+    });
+    assert.deepEqual(config.routing.rules, []);
+    assert.deepEqual(p, before);
+    const originalOutbounds = copy(config.outbounds);
+    byTag(config, 'preview-direct').settings.domainStrategy = 'UseIPv4';
+    assert.deepEqual(build(p).outbounds, originalOutbounds);
+    assert.deepEqual(p, before);
+  }
+});
+
+test('disabling GlobalProxy changes template default but preserves broad explicit proxy rules', () => {
+  const rules = [{ action: 'proxy', network: 'tcp,udp', enabled: true }];
+  for (const globalProxy of [true, false]) {
+    const p = { globalProxy, rules: copy(rules) };
+    const before = copy(p);
+    freeze(p);
+    const config = build(p);
+    assert.equal(config.outbounds[0].tag, globalProxy ? 'proxy' : 'preview-direct');
+    assert.deepEqual(config.routing.rules, [
+      { type: 'field', network: 'tcp,udp', outboundTag: 'proxy' },
+    ]);
+    assert.deepEqual(p, before);
   }
 });
 
@@ -165,9 +225,9 @@ test('directDomainStrategy affects only generated legacy direct freedom', () => 
 
 test('advanced rules override all legacy lists, including an explicit empty list', () => {
   const cleared = build({ ...sample(), rules: [] });
-  assert.equal(cleared.routing.rules.length, 1);
+  assert.equal(cleared.routing.rules.length, 0);
   const config = build({ ...sample(), rules: [{ action: 'proxy', domain: ['only.example'] }] });
-  assert.equal(config.routing.rules.length, 2);
+  assert.equal(config.routing.rules.length, 1);
   assert.deepEqual(config.routing.rules[0].domain, ['only.example']);
 });
 
@@ -181,7 +241,7 @@ test('advanced DNS first, category ordering, then custom; disabled rules skipped
     { action: 'proxy', enabled: false, domain: ['disabled.example'] },
   ] });
   assert.deepEqual(config.routing.rules.map((rule) => rule.outboundTag),
-    ['preview-dns', 'preview-direct', 'proxy', 'preview-block', 'tail', 'proxy']);
+    ['preview-dns', 'preview-direct', 'proxy', 'preview-block', 'tail']);
   assert.equal(byTag(config, 'tail').protocol, 'freedom');
 });
 
@@ -219,9 +279,10 @@ test('explicit Outbounds preserve exact settings and add all entries, including 
     { action: 'direct', domain: ['direct.example'] }, { action: 'block', domain: ['block.example'] },
     { action: 'custom', customTag: 'special' },
   ] });
-  assert.deepEqual(config.outbounds.slice(1), outbounds);
+  assert.deepEqual(config.outbounds.filter((outbound) => outbound.tag !== 'proxy'), outbounds);
+  assert.equal(config.outbounds[0].tag, 'direct');
   assert.deepEqual(config.routing.rules.map((rule) => rule.outboundTag),
-    ['block', 'direct', 'special', 'direct']);
+    ['block', 'direct', 'special']);
 });
 
 test('explicit Outbounds:[] never rescues required direct/block/custom dependencies', () => {
@@ -236,15 +297,47 @@ test('explicit Outbounds:[] never rescues required direct/block/custom dependenc
   code('invalidTarget', () => buildConfigPreview({ globalProxy: false, outbounds: [] }, base, 'chosen'));
 });
 
-test('explicit Outbounds missing or wrong service protocol fails closed', () => {
+test('explicit direct/block destinations own their protocols; DNS helper must be DNS', () => {
   for (const [action, protocol] of [['direct', 'blackhole'], ['block', 'freedom']]) {
-    code('invalidTarget', () => buildConfigPreview({
+    const config = build({
       outbounds: [{ tag: action, protocol, settings: {} }], rules: [{ action }],
-    }));
+    });
+    assert.equal(config.routing.rules[0].outboundTag, action);
+    assert.equal(byTag(config, action).protocol, protocol);
   }
   code('invalidTarget', () => buildConfigPreview({ outbounds: [
     { tag: 'dns', protocol: 'freedom', settings: {} },
   ], rules: [{ action: 'dns' }] }));
+});
+
+test('explicit direct/block protocols and settings survive template default reordering', () => {
+  for (const globalProxy of [true, false]) {
+    const p = {
+      globalProxy, directDomainStrategy: 'UseIPv6',
+      outbounds: [
+        { tag: 'block', protocol: 'freedom', settings: { domainStrategy: 'UseIPv4' } },
+        { tag: 'direct', protocol: 'socks', settings: {
+          servers: [{ address: 'explicit.example.invalid', port: 1080,
+            users: [{ user: 'sample', pass: 'sample' }] }],
+        } },
+      ],
+      rules: [{ action: 'direct', domain: ['direct.invalid'] },
+        { action: 'block', domain: ['blocked.invalid'] }],
+    };
+    const before = copy(p);
+    freeze(p);
+    const config = build(p);
+    assert.deepEqual(config.outbounds.map((outbound) => outbound.tag), globalProxy
+      ? ['proxy', 'block', 'direct'] : ['direct', 'proxy', 'block']);
+    for (const outbound of before.outbounds) {
+      assert.deepEqual(byTag(config, outbound.tag), outbound);
+    }
+    assert.deepEqual(config.routing.rules, [
+      { type: 'field', domain: ['blocked.invalid'], outboundTag: 'block' },
+      { type: 'field', domain: ['direct.invalid'], outboundTag: 'direct' },
+    ]);
+    assert.deepEqual(p, before);
+  }
 });
 
 test('explicit DNS helper is preserved and missing DNS helper is allocated safely', () => {
@@ -306,7 +399,9 @@ test('prototype-key and generated-name custom tags never cause implicit lookup o
   for (const tag of tags) {
     assert.deepEqual(byTag(config, tag), { tag, protocol: 'freedom', settings: {} });
   }
-  assert.equal(config.routing.rules.at(-1).outboundTag, 'preview-direct-2');
+  assert.equal(config.outbounds[0].tag, 'preview-direct-2');
+  assert.equal(byTag(config, 'preview-direct-2').protocol, 'freedom');
+  assert.deepEqual(config.routing.rules.map((rule) => rule.outboundTag), tags);
   const explicit = build({ outbounds: [{ tag: '__proto__', protocol: 'freedom',
     settings: { keep: true } }], rules: [{ action: 'custom', customTag: '__proto__' }] });
   assert.deepEqual(byTag(explicit, '__proto__').settings, { keep: true });
@@ -347,26 +442,41 @@ test('modern DNS overrides legacy fields, supports enabled omission, domains and
     { address: '9.9.9.9', port: 53, domains: ['geosite:private'] },
     { address: 'tcp://dns.example.invalid', port: 53 },
     { address: 'https://dns.example.invalid/dns-query' },
-    { address: 'https://other.example.invalid/dns-query', port: 443 }, 'localhost',
+    { address: 'https://other.example.invalid/dns-query', port: 443 }, { address: 'localhost' },
   ], queryStrategy: 'UseIPv6', hosts: sample().dnsHosts });
 });
 
 test('modern empty DNS suppresses remote/domestic and always appends localhost', () => {
-  assert.deepEqual(build({ ...sample(), dnsServers: [] }).dns.servers, ['localhost']);
+  assert.deepEqual(build({ ...sample(), dnsServers: [] }).dns.servers, [{ address: 'localhost' }]);
   assert.deepEqual(build({ dnsServers: [{ address: 'localhost' }] }).dns.servers,
-    [{ address: 'localhost', port: 53 }, 'localhost']);
+    [{ address: 'localhost', port: 53 }, { address: 'localhost' }]);
   assert.equal(Object.hasOwn(build({ dnsHosts: {} }).dns, 'hosts'), false);
 });
 
 test('legacy DoH prefers domain then builds IP URL; other types prefer IP then domain', () => {
-  for (const ip of ['1.1.1.1', '2606:4700:4700::1111']) {
-    const host = ip.includes(':') ? `[${ip}]` : ip;
+  for (const ip of ['1.1.1.1', '[2606:4700:4700::1111]']) {
     assert.deepEqual(build({ remoteDnsType: 'DoH', remoteDnsIp: ip }).dns.servers,
-      [{ address: `https://${host}/dns-query` }, 'localhost']);
+      [{ address: `https://${ip}/dns-query` }, { address: 'localhost' }]);
   }
   assert.deepEqual(build({ remoteDnsType: 'DoH', remoteDnsDomain: 'https://preferred.invalid/dns-query',
     remoteDnsIp: '1.1.1.1', domesticDnsType: 'DoU', domesticDnsDomain: 'fallback.invalid' }).dns.servers,
-  [{ address: 'https://preferred.invalid/dns-query' }, { address: 'fallback.invalid' }, 'localhost']);
+  [{ address: 'https://preferred.invalid/dns-query' }, { address: 'fallback.invalid', port: 53 }, { address: 'localhost' }]);
+});
+
+test('DNS supports pinned-core transports without requiring two DoH servers', () => {
+  const addresses = ['192.0.2.53', '2001:db8::53', 'tcp://192.0.2.53:5353',
+    'https://resolver.example.invalid:8443/query', 'tcp+local://[2001:db8::53]:5353',
+    'https+local://resolver.example.invalid/dns-query', 'quic+local://resolver.example.invalid:8853'];
+  const dnsServers = addresses.map((address) => ({ address, port: '', domains: [], enabled: true }));
+  const config = build({ ...sample(), dnsServers });
+  assert.deepEqual(config.dns.servers.map((row) => row.address), [...addresses, 'localhost']);
+  assert.equal(config.dns.servers.some((row) => row.address.includes('cloudflare')), false);
+  const disabled = build({ ...sample(), dnsServers: dnsServers.map((row) => ({ ...row, enabled: false })) });
+  assert.deepEqual(disabled.dns.servers, [{ address: 'localhost' }]);
+  const fake = build({ ...sample(), fakeDns: true, dnsServers: [] });
+  assert.deepEqual(fake.dns.servers.map((row) => row.address), ['fakedns', 'localhost']);
+  code('invalidDns', () => buildConfigPreview({ remoteDnsType: 'DoH', remoteDnsIp: '2001:db8::53' }));
+  code('invalidDns', () => buildConfigPreview({ dnsServers: [{ address: 'fakedns' }] }));
 });
 
 test('invalid DNS produces only stable invalidDns errors', () => {
@@ -387,7 +497,7 @@ test('FakeDNS template contains required pools, sniffing and first DNS intercept
   const config = build({ ...sample(), fakeDns: true, dnsServers: [] });
   assert.deepEqual(config.fakedns, [{ ipPool: '198.18.0.0/15', poolSize: 65535 },
     { ipPool: 'fc00::/18', poolSize: 65535 }]);
-  assert.deepEqual(config.dns.servers, [{ address: 'fakedns' }, 'localhost']);
+  assert.deepEqual(config.dns.servers, [{ address: 'fakedns', domains: [] }, { address: 'localhost' }]);
   assert.deepEqual(config.inbounds[0].sniffing, {
     enabled: true, destOverride: ['http', 'tls', 'fakedns'],
   });
@@ -498,7 +608,7 @@ test('base missing optional DNS/routing/inbounds remains supported without FakeD
   const base = { outbounds: simpleBase().outbounds };
   const config = build({}, freeze(base), 'chosen');
   assert.equal(Object.hasOwn(config, 'inbounds'), false);
-  assert.deepEqual(config.dns.servers, ['localhost']);
+  assert.deepEqual(config.dns.servers, [{ address: 'localhost' }]);
   assert.equal(config.routing.rules.at(-1).outboundTag, 'chosen');
 });
 

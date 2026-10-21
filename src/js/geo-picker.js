@@ -21,15 +21,34 @@ export function initGeoPicker({ getProfile, onAdd }) {
   const results = $('geo-results');
   const count = $('geo-count');
   const add = $('geo-add');
-  let activeKey;
   let kind;
+  let commit = () => {};
+  let canAdd = () => false;
   let selected = new Set();
   let existing = new Set();
   let limit = 100;
 
   function updateCount(total) {
     count.textContent = `${count.dataset.results}: ${total} · ${count.dataset.selected}: ${selected.size}`;
-    add.disabled = selected.size === 0 || getProfile().rules !== undefined;
+    add.disabled = selected.size === 0 || !canAdd();
+  }
+
+  function open(type, values, onSelected, options = {}) {
+    kind = type;
+    commit = onSelected;
+    canAdd = options.canAdd || (() => true);
+    if (!canAdd()) return;
+    existing = new Set(values);
+    selected = new Set();
+    search.value = '';
+    limit = 100;
+    $('geo-title').textContent = options.title || (kind === 'geosite' ? 'GeoSite' : 'GeoIP');
+    $('geo-source').textContent = `${$('geo-source').dataset.label}: ${GEO_CATALOG.provider} · ${GEO_CATALOG.updatedAt.slice(0, 10)} · ${GEO_CATALOG[kind].categories.length}`;
+    $('geo-mismatch').hidden = catalogMatchesSource(kind, getProfile()[`${kind}Url`]);
+    renderResults();
+    results.scrollTop = 0;
+    dialog.showModal();
+    search.focus();
   }
 
   function renderResults() {
@@ -75,19 +94,10 @@ export function initGeoPicker({ getProfile, onAdd }) {
     button.addEventListener('click', () => {
       const profile = getProfile();
       if (profile.rules !== undefined) return;
-      activeKey = key;
-      kind = geoKind(key);
-      existing = new Set(profile[key]);
-      selected = new Set();
-      search.value = '';
-      limit = 100;
-      $('geo-title').textContent = `${button.textContent} / ${key}`;
-      $('geo-source').textContent = `${$('geo-source').dataset.label}: ${GEO_CATALOG.provider} · ${GEO_CATALOG.updatedAt.slice(0, 10)} · ${GEO_CATALOG[kind].categories.length}`;
-      $('geo-mismatch').hidden = catalogMatchesSource(kind, profile[`${kind}Url`]);
-      renderResults();
-      results.scrollTop = 0;
-      dialog.showModal();
-      search.focus();
+      open(geoKind(key), profile[key], (values) => onAdd(key, values), {
+        title: `${button.textContent} / ${key}`,
+        canAdd: () => getProfile() === profile && getProfile().rules === undefined,
+      });
     });
     editor.querySelector('.list-add-row').appendChild(button);
   }
@@ -102,8 +112,9 @@ export function initGeoPicker({ getProfile, onAdd }) {
   });
   $('geo-close').addEventListener('click', () => dialog.close());
   add.addEventListener('click', () => {
-    if (getProfile().rules !== undefined || selected.size === 0) return;
-    onAdd(activeKey, [...selected]);
+    if (!canAdd() || selected.size === 0) return;
+    commit([...selected]);
     dialog.close();
   });
+  return { open };
 }
